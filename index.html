@@ -1,0 +1,2029 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Study Pacer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body{
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f9f9fb;
+      color: #111;
+
+      /* True vertical+horizontal centering */
+      display: grid;
+      place-items: center;
+
+      /* Mobile-safe viewport height */
+      min-height: 100vh;     /* fallback */
+      min-height: 100dvh;    /* correct on iOS/Android */
+
+      /* Remove the extra top padding that pushed things down */
+      padding: 0;
+    }
+
+    h1{
+      font-size: 24px;
+      /* Kill the negative top margin so centering is accurate */
+      margin: 0 0 30px 0;
+    }
+    #setup {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      margin: 0 0 30px 0;
+    }
+    .input-group {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin: 8px 0;
+    }
+    input {
+      padding: 10px;
+      border-radius: 14px;
+      border: 1px solid #ccc;
+      width: 120px;
+      text-align: center;
+      font-size: 16px;
+    }
+    input::placeholder {
+      text-align: center;
+    }
+    input[type=number]::-webkit-outer-spin-button,
+    input[type=number]::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    input[type=number] {
+      -moz-appearance: textfield;
+    }
+    input:focus {
+      outline: none;
+      box-shadow: none;
+    }
+    input:focus::placeholder {
+      color: transparent;
+    }
+    button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 20px;
+      background: #007aff;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+      margin: 5px;
+      transition: background 0.2s ease-in-out;
+    }
+    button:hover {
+      background: #005fdb;
+    }
+    .pill {
+      border-radius: 20px;
+      padding: 8px 16px;
+      background: #eee;
+      margin: 5px auto;
+      width: fit-content;
+    }
+    .hidden { display: none !important; }
+
+.slider-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+/* Apple-style toggle pill + fix checkbox spacing */
+.switch-pill{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;                 /* tight gap, removes big space */
+  padding:6px 12px;
+  border-radius:999px;
+  background:#f2f2f7;
+  border:1px solid #e5e5ea;
+}
+.switch-pill input[type="checkbox"]{
+  margin:0;                /* kill default checkbox margins */
+  padding:0;
+  width:16px; height:16px; /* consistent box size */
+  vertical-align:middle;
+}
+
+/* tighten checkbox spacing even more */
+.switch-pill{ gap:6px; }
+.switch-pill input[type="checkbox"]{
+  margin:0; padding:0;
+  width:16px; height:16px;
+  vertical-align:middle;
+  position: relative; top: 1px; /* nudge to center vertically */
+}
+/* remove any stray spacing on the label text */
+.switch-pill span{ margin:0; padding:0; line-height: 1; }
+
+#timeSlider {
+  width: 250px;
+  height: 10px;
+  border-radius: 10px;
+  appearance: none;
+  outline: none;
+  border: none;
+  background: transparent;
+}
+
+#timeSlider::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  background: #f0f0f0;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid var(--thumb-border, #007aff);
+  margin-top: -6px;
+}
+
+#timeSlider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  background: #f0f0f0;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid var(--thumb-border, #007aff);
+  margin-top: -6px;
+}
+
+#timeDisplay {
+  margin-top: 0px;
+  font-weight: bold;
+  font-size: 16px;
+}
+/* Pause/Play Button Styling */
+.container {
+  --color: #007aff;
+  --size: 24px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+  cursor: pointer;
+  font-size: var(--size);
+  user-select: none;
+  fill: var(--color);
+  margin: 5px 20px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.container .play {
+  position: absolute;
+  animation: keyframes-fill 0.3s;
+}
+
+.container .pause {
+  position: absolute;
+  display: none;
+  animation: keyframes-fill 0.3s;
+}
+
+.container input:checked ~ .play {
+  display: none;
+}
+
+.container input:checked ~ .pause {
+  display: block;
+}
+
+.container input {
+  position: absolute;
+  opacity: 0;
+  cursor: pointer;
+  height: 0;
+  width: 0;
+  outline: none;
+}
+
+@keyframes keyframes-fill {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
+.button-group {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px; /* Little more gap */
+  margin-top: 10px;
+}
+.next-button, .back-button {
+  background-color: #e0e0e0;
+  color: #111;
+  width: 7em;
+  height: 1.8em; /* 🔥 LOWERED from 2.2em to 1.8em */
+  border: none;
+  border-radius: 11px;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.4s ease;
+  font-size: 14px; /* 🔥 Slightly smaller font */
+  position: relative;
+  margin: 10px 10px;
+}
+
+.next-button:hover {
+  background-color: #c5c5c5;
+  transform: translateX(3px); /* Hover slides right */
+}
+
+.back-button:hover {
+  background-color: #c5c5c5;
+  transform: translateX(-3px); /* Hover slides left */
+}
+
+.next-button .text, .back-button .text {
+  margin: 0 0.2em;
+}
+.arrow {
+  position: relative;
+  top: -1px; /* lift the arrow a little */
+  font-size: 1.1em; /* slightly bigger to match text weight */
+}
+#timeSlider::-webkit-slider-runnable-track {
+  height: 8px;
+  background: linear-gradient(to right, #ccc, #007aff);
+  border-radius: 10px;
+  border: none;
+  margin-top: 6px;
+}
+
+#timeSlider::-moz-range-track {
+  height: 8px;
+  background: linear-gradient(to right, #ccc, #007aff);
+  border-radius: 10px;
+  border: none;
+  margin-top: 6px;
+}
+.cssbuttons-io-button {
+  background: linear-gradient(to bottom, #ccc, #007aff);
+  color: white;
+  font-family: inherit;
+  padding: 0.3em 1em 0.3em 1.2em;
+  font-size: 15px;
+  font-weight: 500;
+  border-radius: 14px;
+  border: none;
+  letter-spacing: 0.03em;
+  display: flex;
+  align-items: center;
+  position: relative;
+  height: 42px;
+  overflow: hidden;
+  padding-right: 3.2em;
+  cursor: pointer;
+  box-shadow: 0 0 0 transparent;
+}
+
+.cssbuttons-io-button .icon {
+  background: white;
+  margin-left: 1em;
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 2.2em;
+  width: 2.2em;
+  border-radius: 0.7em;
+  box-shadow: 0 0 0 transparent;
+  right: 0.3em;
+  transition: all 0.3s ease;
+  border: none;
+}
+
+.cssbuttons-io-button:hover .icon {
+  width: calc(100% - 0.6em);
+}
+
+.cssbuttons-io-button .icon svg {
+  width: 1.1em;
+  transition: transform 0.3s ease;
+  color: #007aff;
+}
+
+.cssbuttons-io-button:hover .icon svg {
+  transform: translateX(0.2em);
+}
+
+.cssbuttons-io-button:active .icon {
+  transform: scale(0.95);
+}
+.adjust-button {
+  background: #e0e0e0;
+  border: none;
+  border-radius: 6px;
+  width: 26px;
+  height: 26px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin-top: 10px;
+  transition: background 0.2s;
+}
+
+.adjust-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+.adjust-button:hover {
+  background: #c5c5c5;
+}
+
+/* 🔥 Add this for Dark Mode */
+body.dark-mode .adjust-button {
+  background: #2a2a2a;
+}
+
+body.dark-mode .adjust-button:hover {
+  background: #444;
+}
+
+body.dark-mode .adjust-button svg {
+  stroke: #eee; /* 🔥 make plus/minus white in dark mode */
+}
+#leftButtonZone, #rightButtonZone {
+  position: fixed;
+  top: 5%;
+  bottom: 5%;
+  width: 70px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30px;
+  font-weight: bold;
+  background: linear-gradient(to right, #d0d0d0, #f9f9fb);
+  color: #111;
+  cursor: pointer;
+  z-index: 1000;
+  transition: background 0.3s, transform 0.3s;
+}
+
+#leftButtonZone {
+  left: 0;
+  border-top-right-radius: 500px;
+  border-bottom-right-radius: 500px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+#rightButtonZone {
+  right: 0;
+  background: linear-gradient(to left, #d0d0d0, #f9f9fb);
+  border-top-left-radius: 500px;
+  border-bottom-left-radius: 500px;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+#leftButtonZone:hover {
+  background: linear-gradient(to right, #bdbdbd, #f9f9fb);
+  transform: scale(1.02);
+}
+
+#rightButtonZone:hover {
+  background: linear-gradient(to left, #bdbdbd, #f9f9fb);
+  transform: scale(1.02);
+}
+#extraTimeSlider {
+  width: 250px;
+  height: 10px;
+  border-radius: 10px;
+  appearance: none;
+  outline: none;
+  border: none;
+  background: transparent;
+}
+
+#extraTimeSlider::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  background: #f0f0f0;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid var(--thumb-border, #007aff);
+  margin-top: -6px;
+}
+
+#extraTimeSlider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  background: #f0f0f0;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid var(--thumb-border, #007aff);
+  margin-top: -6px;
+}
+
+#extraTimeSlider::-webkit-slider-runnable-track {
+  height: 8px;
+  background: linear-gradient(to right, #ccc, #007aff);
+  border-radius: 10px;
+  border: none;
+  margin-top: 6px;
+}
+
+#extraTimeSlider::-moz-range-track {
+  height: 8px;
+  background: linear-gradient(to right, #ccc, #007aff);
+  border-radius: 10px;
+  border: none;
+  margin-top: 6px;
+}
+.summary-card {
+  background: #f0f0f0;
+  border-radius: 14px;
+  padding: 16px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+body.dark-mode {
+  background: #121212;
+  color: #eee;
+}
+
+body.dark-mode input,
+body.dark-mode button,
+body.dark-mode .pill,
+body.dark-mode .summary-card {
+  background: #1e1e1e;
+  color: #eee;
+}
+
+body.dark-mode .cssbuttons-io-button {
+  background: linear-gradient(to bottom, #444, #007aff);
+}
+
+body.dark-mode #leftButtonZone,
+body.dark-mode #rightButtonZone {
+  background: linear-gradient(to right, #333, #1e1e1e);
+  color: #eee; /* 🔥 better text color for arrows */
+}
+
+body.dark-mode #leftButtonZone:hover,
+body.dark-mode #rightButtonZone:hover {
+  background: linear-gradient(to right, #555, #1e1e1e);
+}
+
+body.dark-mode .back-button {
+  background-color: unset;
+  background: linear-gradient(to right, #2a2a2a 30%, #121212 70%);
+  color: #eee;
+  border: none;
+}
+
+body.dark-mode .next-button {
+  background-color: unset;
+  background: linear-gradient(to right, #121212 30%, #2a2a2a 70%);
+  color: #eee;
+  border: none;
+}
+
+body.dark-mode .next-button:hover,
+body.dark-mode .back-button:hover {
+  background: #2a2a2a; /* slightly lift on hover */
+}
+#favoriteButton {
+  color: #FFD700; /* gold in light mode */
+}
+
+body.dark-mode #favoriteButton {
+  color: #eee; /* white in dark mode */
+}
+body.dark-mode #complete button {
+  color: #111; /* Darker font for dark mode buttons */
+}
+body.dark-mode .summary-card div:first-child {
+  color: #ccc; /* Lighten the card title */
+}
+body.dark-mode .summary-card {
+  background: #2a2a2a; /* Light Gray Background for cards */
+}
+/* 🧹 Force Slide Log and Favorites Popups to always be light theme */
+#logPopup > div,
+#favoritesPopup > div {
+  background: #f0f0f0 !important; /* Light gray background */
+  color: #111 !important; /* Dark text */
+}
+
+/* 🧹 Make sure dark mode doesn't change popup colors */
+body.dark-mode #logPopup > div,
+body.dark-mode #favoritesPopup > div {
+  background: #f0f0f0 !important; /* Stay light gray even in dark mode */
+  color: #111 !important; /* Stay dark text even in dark mode */
+}
+
+/* 🧹 Make sure the popup overlay (background outside the box) stays subtle */
+#logPopup,
+#favoritesPopup {
+  background: rgba(0, 0, 0, 0.5); /* Semi-transparent black overlay */
+}
+
+/* 🧹 Make dividers inside popups stay light gray even in dark mode */
+#logList div,
+#favoritesList div {
+  border-color: #ccc; /* Divider line color */
+}
+
+html, body {
+  overflow: hidden;
+  touch-action: manipulation;
+}
+
+/* 🧹 Allow inner scrolling for popup content if needed */
+#logPopup > div,
+#favoritesPopup > div {
+  overflow-y: auto;
+  max-height: 80vh;
+}
+/* 🧹 Popup Forced Light Theme */
+body.dark-mode #logPopup > div,
+body.dark-mode #favoritesPopup > div,
+#logPopup > div,
+#favoritesPopup > div {
+  background: #f0f0f0 !important;
+  color: #111 !important;
+}
+
+body.dark-mode #logPopup,
+body.dark-mode #favoritesPopup,
+#logPopup,
+#favoritesPopup {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+/* Divider color inside popups */
+#logList > div,
+#favoritesList > div {
+  border-color: #ccc !important;
+}
+
+/* Allow inner popup scroll */
+#logPopup > div,
+#favoritesPopup > div {
+  overflow-y: auto;
+  max-height: 80vh;
+}
+body.dark-mode #needMoreTime button {
+  background: #e0e0e0;
+  color: #111;
+}
+#complete {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+#complete {
+  padding-bottom: 100px;  /* space for the moon button */
+}
+  </style>
+</head>
+<body>
+
+  <div id="bottomControls" style="
+    position: fixed;
+    bottom: 15px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+  ">
+    <div id="favoriteButtonWrapper" style="display: none;">
+      <button id="favoriteButton" onclick="toggleFavorite()" style="
+        background: transparent;
+        border: none;
+        font-size: 32px;
+        cursor: pointer;
+        transition: transform 0.3s;
+      ">☆</button>
+    </div>    
+
+    <button onclick="toggleDarkMode()" style="
+      background: transparent;
+      border: none;
+      font-size: 24px;
+      cursor: pointer;
+      transition: transform 0.3s;
+    ">🌙</button>
+  </div>
+
+  <div id="setup">
+
+  <h1>Study Pacer</h1>
+
+    <!-- Mode toggle -->
+    <div style="margin:10px 0; display:flex; justify-content:center;">
+      <label class="switch-pill">
+        <input id="perSlideMode" type="checkbox"
+              onchange="applyModeLimits(); updateTimeDisplay(); updateEstimate();" />
+        <span>Time per slide</span>
+      </label>
+    </div>
+
+    <!-- Pacing profile -->
+    <div style="margin:8px 0; display:flex; gap:8px; justify-content:center; align-items:center;">
+      <label class="pill" style="padding:6px 10px;">Pacing</label>
+      <select id="pacingProfile" style="padding:8px 10px; border-radius:12px; border:1px solid #ccc;">
+        <option value="even" selected>Even</option>
+        <option value="front">Front-loaded</option>
+        <option value="back">Back-loaded</option>
+        <option value="weights">Weights…</option>
+      </select>
+    </div>
+
+    <!-- Optional weights (CSV like 1,1,1,2,3) -->
+    <div id="weightsRow" style="margin:4px 0 10px; display:none; justify-content:center;">
+      <input id="weightsInput" type="text" placeholder="Weights CSV (e.g., 1,1,2,3)"
+            style="width:260px; padding:10px; border-radius:12px; border:1px solid #ccc; text-align:center;">
+    </div>
+
+    <!-- Break reminders (auto mode) -->
+    <div id="breakControls" style="
+      display:grid;
+      grid-template-columns: auto auto auto;  /* label | input | hint */
+      justify-content:center;
+      align-items:center;
+      gap:12px 10px;
+      margin:8px 0;
+    ">
+      <label class="pill" style="padding:6px 10px;">Break every</label>
+
+      <input id="breakEvery" type="number" min="1" placeholder="#"
+            style="width:56px; text-align:center; padding:6px 8px;"
+            oninput="updateBreakUIVisibility()">
+
+      <span id="breakModeHint" class="muted">slides</span>
+
+      <!-- Drops to its own row -->
+      <div id="breakLenWrap" style="
+          display:none;
+          justify-content:center;
+          align-items:center;
+          gap:10px;                 /* match the top row spacing */
+          grid-column: 1 / -1;
+      ">
+        <span style="padding:0 4px;">for</span>
+        <input id="breakLen" type="number" min="1" placeholder="#"
+              value=""
+              style="width:56px; text-align:center; padding:6px 8px;">
+        <span style="padding:0 4px;">min</span>
+      </div>
+    </div>
+
+    <div class="slider-container" style="flex-direction: row; gap: 10px;">
+        <button class="adjust-button" onclick="adjustTime(-1)">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+          </button>
+          
+        <input id="timeSlider" type="range" min="1" max="300" value="60"
+              oninput="updateTimeDisplay(); updateThumbBorderColor(); updateEstimate();" />
+          
+          <button class="adjust-button" onclick="adjustTime(1)">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+          </button>          
+    </div>
+    <div id="timeDisplay" style="margin-bottom: 20px;">1 hr 0 min</div>
+    <!-- Estimated total time (only shows in per-slide mode) -->
+    <div id="estimate" class="pill hidden" style="margin-top:8px;">
+      Estimated total: <span id="estimateText">0s</span>
+    </div>
+  
+    <input id="totalSlides" type="number" placeholder="Slides" style="margin-top: 10px;" oninput="updateEstimate()" />
+    <button class="cssbuttons-io-button" onclick="startSession()" style="margin-top: 30px;">
+        Start Session
+        <div class="icon">
+          <svg
+            height="24"
+            width="24"
+            viewBox="0 0 24 24"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path d="M0 0h24v24H0z" fill="none"></path>
+            <path
+              d="M16.172 11l-5.364-5.364 1.414-1.414L20 12l-7.778 7.778-1.414-1.414L16.172 13H4v-2z"
+              fill="currentColor"
+            ></path>
+          </svg>
+        </div>
+      </button>      
+  </div>
+
+  <div id="timer" class="hidden">
+    <div class="pill">Slide <span id="slideNum">1</span> / <span id="slideTotal">1</span></div>
+    <div class="pill" style="position: relative; width: 120px; height: 120px; margin: 0 auto;">
+        <canvas id="slideRing" width="120" height="120"></canvas>
+        <div id="slideTimeLeft" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-weight: bold; font-size: 16px;">0s</div>
+      </div>
+      <div class="pill" style="background: none; box-shadow: none; padding: 0; margin: 30px auto 0 auto; text-align: center;">
+        <div style="font-weight: bold; font-size: 14px; margin-bottom: 6px;">Total Time Left</div>
+        <div style="position: relative; width: 250px; height: 8px; background: #eee; border-radius: 10px; overflow: hidden; margin: 0 auto;">
+          <div id="timeBar" style="position: absolute; top: 0; left: 0; bottom: 0; width: 100%; background: linear-gradient(to right, #a8e6cf, #00c853); transition: width 0.3s ease;"></div>
+        </div>
+        <div id="timeLeft" style="margin-top: 8px; font-weight: bold; font-size: 13px;">0s</div>
+
+        <div id="finishTimes" style="display: flex; justify-content: center; gap: 10px; font-size: 12px; margin: 15px 0; font-weight: normal;">
+          <span id="staticFinishTime">Finish: --:--</span>
+          <span>|</span>
+          <span id="predictedFinishTime">Predicted: --:--</span>
+        </div>        
+        
+      </div>       
+    <br />
+    <div id="leftButtonZone" onclick="prevSlide()">←</div>
+      <div id="rightButtonZone" onclick="nextSlide()">→</div>  
+
+      <label class="container" id="pausePlayButton">
+        <input type="checkbox" id="pauseCheckbox" onchange="pauseResume()" checked />
+        <svg class="play" xmlns="http://www.w3.org/2000/svg" height="1.5em" viewBox="0 0 384 512">
+          <path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"></path>
+        </svg>
+        <svg class="pause" xmlns="http://www.w3.org/2000/svg" height="1.5em" viewBox="0 0 320 512">
+          <path d="M48 64C21.5 64 0 85.5 0 112V400c0 26.5 21.5 48 48 48H80c26.5 0 48-21.5 48-48V112c0-26.5-21.5-48-48-48H48zm192 0c-26.5 0-48 21.5-48 48V400c0 26.5 21.5 48 48 48h32c26.5 0 48-21.5 48-48V112c0-26.5-21.5-48-48-48H240z"></path>
+        </svg>
+      </label>  
+
+      <div style="margin-top: 20px; display: flex; justify-content: center;">
+        <button onclick="openLogPopup()" class="cssbuttons-io-button">
+          View Log
+          <div class="icon">
+            <svg height="24" width="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path d="M0 0h24v24H0z" fill="none"></path>
+              <path d="M3 3h18v2H3V3zm0 7h18v2H3v-2zm0 7h18v2H3v-2z" fill="currentColor"></path>
+            </svg>
+          </div>
+        </button>
+      </div>
+      
+  </div>
+
+  <div id="needMoreTime" class="hidden">
+    <h2>⏰ Need More Time?</h2>
+    <p>You're not finished yet. Add more time to continue.</p>
+  
+    <div class="slider-container" style="flex-direction: row; justify-content: center; align-items: center; gap: 10px; margin-top: 20px;">
+      <button class="adjust-button" onclick="adjustExtraTime(-1)">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+      </button>
+    
+      <input id="extraTimeSlider" type="range" min="1" max="300" value="30" oninput="updateExtraTimeDisplay()" />
+    
+      <button class="adjust-button" onclick="adjustExtraTime(1)">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"></line>
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+      </button>
+    </div>
+    
+    <div id="extraTimeDisplay" style="margin-top: 8px; font-weight: bold; font-size: 16px;">30 min</div>
+  
+    <button onclick="addExtraTime()" style="margin-top: 30px;">➕ Add Time & Continue</button>
+  </div>   
+
+  <div id="complete" class="hidden"
+     style="display:flex; flex-direction:column; align-items:center; text-align:center;">
+
+    <h2>✅ Session Complete!</h2>
+    <p>Awesome work. You finished your session!</p>
+
+    <div id="sessionSummary" style="
+      display: grid;
+      grid-template-columns: repeat(2, 160px); /* 🔥 Wider cards */
+      gap: 20px;
+      margin: 30px 0;
+      padding: 0 20px;
+      justify-content: center; /* 🔥 Center the grid */
+    ">
+
+      <div class="summary-card">
+        <div style="font-size: 14px; color: #555;">Total Time</div>
+        <div id="summaryTotalTime" style="font-weight: bold; margin-top: 6px;">--</div>
+      </div>
+
+      <div class="summary-card">
+        <div style="font-size: 14px; color: #555;">Average per Slide</div>
+        <div id="summaryAvgTime" style="font-weight: bold; margin-top: 6px;">--</div>
+      </div>
+
+      <div class="summary-card">
+        <div style="font-size: 14px; color: #555;">Fastest Slide</div>
+        <div id="summaryFastest" style="font-weight: bold; margin-top: 6px;">--</div>
+      </div>
+
+      <div class="summary-card">
+        <div style="font-size: 14px; color: #555;">Slowest Slide</div>
+        <div id="summarySlowest" style="font-weight: bold; margin-top: 6px;">--</div>
+      </div>
+
+    </div>
+    
+    <div style="margin-top: 20px; display: flex; justify-content: center;">
+      <button onclick="openLogPopup()" class="cssbuttons-io-button">
+        View Log
+        <div class="icon">
+          <svg height="24" width="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M0 0h24v24H0z" fill="none"></path>
+            <path d="M3 3h18v2H3V3zm0 7h18v2H3v-2zm0 7h18v2H3v-2z" fill="currentColor"></path>
+          </svg>
+        </div>
+      </button>
+    </div>
+
+    <div style="margin-top: 20px; display: flex; justify-content: center;">
+      <button onclick="openFavoritesPopup()" style="
+        background: #e0e0e0;
+        border: none;
+        border-radius: 20px;
+        padding: 8px 16px;
+        font-size: 14px;
+        font-weight: bold;
+        cursor: pointer;
+      ">
+        View Favorites
+      </button>
+    </div>      
+  
+    <div style="margin-top: 20px; display: flex; justify-content: center;">
+      <button onclick="restartSession()" style="
+        background: #f4a261;
+        border: none;
+        border-radius: 20px;
+        padding: 8px 16px;
+        font-size: 14px;
+        font-weight: bold;
+        cursor: pointer;
+      ">
+        Restart
+      </button>
+    </div>
+    
+  </div>  
+
+  <div id="logPopup" class="hidden" style="
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5);
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+  ">
+    <div style="
+      background: #f0f0f0;
+      border-radius: 20px;
+      padding: 20px;
+      width: 320px;
+      max-height: 80vh;
+      overflow-y: auto;
+      text-align: left;
+    ">  
+
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+      <h2 style="margin: 0; font-size: 20px;">Slide Log</h2>
+      <button onclick="toggleLogMode()" style="
+        background: linear-gradient(to bottom, #ccc, #007aff);
+        border: none;
+        border-radius: 14px;
+        padding: 6px 14px;
+        font-size: 12px;
+        color: white;
+        cursor: pointer;
+        font-weight: bold;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      ">
+        Color
+      </button>
+    </div>
+
+      <div id="logList" style="display: flex; flex-direction: column; gap: 10px;"></div>
+      <div style="display: flex; justify-content: center; margin-top: 20px;">
+        <button onclick="closeLogPopup()" class="cssbuttons-io-button">
+          Back
+          <div class="icon">
+            <svg height="24" width="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path d="M0 0h24v24H0z" fill="none"></path>
+              <path d="M15 18l-6-6 6-6" fill="currentColor"></path>
+            </svg>
+          </div>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="favoritesPopup" class="hidden" style="
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5);
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+  ">
+    <div style="
+      background: #f0f0f0;
+      border-radius: 20px;
+      padding: 20px;
+      width: 300px;
+      max-height: 80vh;
+      overflow-y: auto;
+      text-align: center;
+    ">
+      <h2 style="margin-bottom: 10px;">⭐ Favorite Slides</h2>
+      <div id="favoritesList" style="display: flex; flex-direction: column; gap: 10px;"></div>
+      <div style="margin-top: 20px; display: flex; justify-content: center;">
+        <button onclick="closeFavoritesPopup()" class="cssbuttons-io-button">
+          Back
+          <div class="icon">
+            <svg height="24" width="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path d="M0 0h24v24H0z" fill="none"></path>
+              <path d="M15 18l-6-6 6-6" fill="currentColor"></path>
+            </svg>
+          </div>
+        </button>
+      </div>      
+    </div>
+  </div>
+
+  <div id="breakPopup" class="hidden" style="
+    position:fixed; inset:0; background:rgba(0,0,0,.5);
+    display:flex; align-items:center; justify-content:center; z-index:9999;">
+    <div style="background:#f0f0f0; border-radius:20px; padding:20px; width:300px; text-align:center; display:flex; flex-direction:column; align-items:center; gap:10px;">
+      <h2 style="margin:0 0 8px;">Break time</h2>
+      <div id="breakCountdown" style="font-weight:bold; font-family:monospace; font-size:20px;">00:00</div>
+      <div class="pill" style="margin:6px auto 8px;">Stretch, hydrate, breathe</div>
+      <button onclick="skipBreak()" class="cssbuttons-io-button" style="margin:0 auto;">
+        Skip
+        <div class="icon"><svg height="24" width="24" viewBox="0 0 24 24"><path d="M0 0h24v24H0z" fill="none"></path><path d="M15 18l-6-6 6-6" fill="currentColor"></path></svg></div>
+      </button>
+    </div>
+  </div>
+
+  <script>
+    let currentSlide = 1;
+    let totalSlides = 1;
+    let totalTime = 0;
+    let totalRemainingTime = 0;
+    let paused = false;
+    let lastUpdate = Date.now();
+    let slideTimeLeft = 0;
+    let defaultSlideTime = 0;
+    let leftoverFromLastSlide = 0;
+    let isHours = false; // false = Minutes, true = Hours
+    let slideStartingTime = 0;
+    let slideLog = [];
+    let useRankingMode = true;
+    let staticFinishTimestamp = 0;
+    let sessionStartTime = 0;
+    let predictionBaseTime = 0;
+    let predictionBaseSlides = 0;
+    let totalCompletedSlideTime = 0;
+    let favoritesMode = false;
+    let favoriteSlides = [];
+    // remember last values when switching modes
+    let savedMinutesValue = 60;      // slider value in minutes (total-time mode)
+    let savedSecondsPerSlide = 60;   // slider value in seconds (per-slide mode)
+    // Pacing
+    let perSlidePlan = [];            // seconds per slide, length = totalSlides
+    // Breaks
+    let breakEnabled = false;
+    let breakEvery = 0;               // number
+    let breakUnit = 'minutes';        // 'minutes' | 'slides'
+    let breakLenSec = 300;            // seconds
+    let nextBreakTimeMs = 0;          // timestamp for minutes mode
+    let lastBreakSlide = 0;           // for slides mode
+    let inBreak = false;
+    let breakTimerId = null;
+    let running = false;
+    let breakBySlides = false;          // true when per-slide mode is ON
+    let plannedBreakRemainingSec = 0;   // planned-but-not-yet-spent break time
+    let pendingAdvanceAfterBreak = false; // used to advance slide after slide-based break finishes
+    let suppressBreakOnce = false;        // skip the very next break-check once
+    let currentBreakRemain = 0; // seconds left in the current break, 0 if not in a break
+
+    // unified event log (slides you already log can stay as-is; we’ll add breaks here)
+    window.logEntries = window.logEntries || [];  // keep existing if present
+
+    // track a break’s timing and context
+    let breakStartMs = 0;
+    let breakAfterSlide = 0;
+
+    function fmtHMSshort(sec){
+  sec = Math.max(0, Math.round(sec));
+  const m = Math.floor(sec/60);
+  const s = sec % 60;
+  if (sec >= 3600){
+    const h = Math.floor(sec/3600);
+    const mm = Math.floor((sec%3600)/60);
+    const ss = sec%60;
+    return `${h}h ${mm}m ${ss}s`;
+  }
+  return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+
+function renderLog(){
+  const list = document.getElementById('logList');
+  if (!list) return;
+
+  // keep existing slide rows; we only append breaks below
+  // sort break entries by timestamp
+  const entries = (window.logEntries || []).slice().sort((a,b)=>(a.ts||0)-(b.ts||0));
+
+  // append each break as a neat row
+  entries.forEach(ev=>{
+    if (ev.type !== 'break') return;
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex; justify-content:space-between; align-items:center; padding:8px 10px; border:1px solid rgba(120,120,128,.2); border-radius:12px; background:#fff;';
+    row.innerHTML = `
+      <span style="opacity:.75;">Break after slide ${ev.afterSlide}</span>
+      <strong>${fmtHMSshort(ev.seconds)}</strong>
+    `;
+    list.appendChild(row);
+  });
+}
+
+    function remainingPlannedBreakSeconds(){
+      if (!breakEnabled) return 0;
+
+      let sec = 0;
+
+      // count the current break time (if we're in a break popup)
+      if (inBreak) sec += Math.max(0, currentBreakRemain);
+
+      if (breakBySlides){
+        // breaks happen AFTER each Nth slide (2->3, 4->5, ...)
+        if (breakEvery > 0) {
+          const remainingBreaks = Math.floor((totalSlides - currentSlide) / breakEvery);
+          sec += Math.max(0, remainingBreaks) * breakLenSec;
+        }
+      } else {
+        // time-based: estimate by remaining session time
+        if (breakEvery > 0) {
+          const intervalSec = breakEvery * 60;
+          const extraBreaks = Math.floor(Math.max(0, totalRemainingTime) / intervalSec);
+          sec += Math.max(0, extraBreaks) * breakLenSec;
+        }
+      }
+
+      return sec;
+    }
+
+    function updateBreakUIVisibility(){
+      const everyEl = document.getElementById('breakEvery');
+      const lenWrap = document.getElementById('breakLenWrap');
+      const hasValue = parseInt(everyEl.value, 10) > 0;
+
+      // Always show the slides/minutes hint; only toggle the "for # minutes" group
+      if (lenWrap) lenWrap.style.display = hasValue ? 'flex' : 'none';
+    }
+
+    function updateBreakModeHint(){
+      const hint = document.getElementById('breakModeHint');
+      const perSlide = document.getElementById('perSlideMode').checked;
+      if (hint) hint.textContent = perSlide ? 'slides' : 'minutes';
+    }
+
+    function resetBreakState(){
+      breakEnabled = false;
+      breakEvery = 0;
+      breakUnit = 'minutes';
+      breakLenSec = 300;
+      nextBreakTimeMs = 0;
+      lastBreakSlide = 0;
+      inBreak = false;
+      if (breakTimerId){ clearInterval(breakTimerId); breakTimerId = null; }
+      const box = document.getElementById('breakPopup');
+      if (box) box.classList.add('hidden');
+    }
+
+    function buildPerSlidePlan(totalSeconds, slides){
+      const mode = document.getElementById('pacingProfile').value;
+      if (mode === 'even'){
+        return Array.from({length:slides}, ()=> totalSeconds/slides);
+      }
+      if (mode === 'front' || mode === 'back'){
+        // geometric-ish weights (soft curve)
+        const n = slides;
+        const weights = [];
+        const a = 1.35; // curve strength
+        for (let i=1;i<=n;i++){
+          const t = i/n;
+          const w = mode==='front' ? (a - (a-1)*t) : (1 + (a-1)*t);
+          weights.push(w);
+        }
+        const sum = weights.reduce((s,x)=>s+x,0);
+        return weights.map(w => totalSeconds * (w/sum));
+      }
+      // weights CSV
+      const raw = (document.getElementById('weightsInput').value || '').trim();
+      const arr = raw.split(',').map(x=>parseFloat(x)).filter(x=>x>0);
+      if (arr.length === slides){
+        const sum = arr.reduce((s,x)=>s+x,0);
+        return arr.map(w => totalSeconds * (w/sum));
+      }
+      // fallback to even if bad input
+      return Array.from({length:slides}, ()=> totalSeconds/slides);
+    }
+
+    function showBreak(seconds){
+      inBreak = true;
+      paused = true;
+
+      // If a time-based break fired (not slide-based), make sure we mark context too
+      if (!breakAfterSlide) breakAfterSlide = currentSlide;
+      if (!breakStartMs) breakStartMs = Date.now();
+
+      const box = document.getElementById('breakPopup');
+      box.classList.remove('hidden');
+
+      currentBreakRemain = Math.max(0, Math.round(seconds));
+      const label = document.getElementById('breakCountdown');
+
+      function paint(){
+        const m = String(Math.floor(currentBreakRemain/60)).padStart(2,'0');
+        const s = String(currentBreakRemain%60).padStart(2,'0');
+        label.textContent = `${m}:${s}`;
+      }
+      paint();
+
+      if (breakTimerId) clearInterval(breakTimerId);
+      breakTimerId = setInterval(()=>{
+        if (currentBreakRemain <= 0){
+          endBreak(); // normal end
+          return;
+        }
+        currentBreakRemain--;
+        paint();
+        if (typeof updateFinishTimes === 'function') updateFinishTimes();
+      }, 1000);
+    }
+
+    function endBreak(){
+      if (breakTimerId){ clearInterval(breakTimerId); breakTimerId = null; }
+      const box = document.getElementById('breakPopup');
+      if (box) box.classList.add('hidden');
+
+      // --- LOG the break ---
+      const durSec = Math.max(0, Math.round((Date.now() - (breakStartMs||Date.now()))/1000));
+      logEntries.push({ type:'break', afterSlide: breakAfterSlide || currentSlide, seconds: durSec, ts: Date.now() });
+      renderLog(); // update UI
+
+      // reset break trackers
+      inBreak = false;
+      paused = false;
+      currentBreakRemain = 0;
+      breakStartMs = 0;
+      breakAfterSlide = 0;
+
+      lastUpdate = Date.now();
+
+      // If we paused at boundary (N -> N+1), advance now once without re-triggering
+      if (pendingAdvanceAfterBreak){
+        pendingAdvanceAfterBreak = false;
+        suppressBreakOnce = true;
+        nextSlide();
+      }
+    }
+
+    function skipBreak(){
+      // Treat as ending now; duration = time already spent
+      endBreak();
+      if (typeof updateFinishTimes === 'function') updateFinishTimes();
+    }
+
+    function scheduleNextMinuteBreak(){
+      if (!breakEnabled || breakUnit!=='minutes') return;
+      nextBreakTimeMs = Date.now() + breakEvery*60*1000;
+    }
+
+    function maybeTriggerBreak(){
+      if (!running || paused || !breakEnabled || inBreak) return;
+
+      if (!breakBySlides){
+        // minutes mode only: fire when the schedule hits
+        if (nextBreakTimeMs && Date.now() >= nextBreakTimeMs){
+          showBreak(breakLenSec);
+          scheduleNextMinuteBreak();
+        }
+      }
+      // slide-based breaks are handled inside nextSlide() only
+    }
+
+    function applyModeLimits(){
+      const slider = document.getElementById('timeSlider');
+      const perSlide = document.getElementById('perSlideMode').checked;
+
+      // remember last values when switching modes
+      if (typeof window.savedMinutesValue === 'undefined') window.savedMinutesValue = parseInt(slider.value) || 60;
+      if (typeof window.savedSecondsPerSlide === 'undefined') window.savedSecondsPerSlide = 60;
+
+      if (perSlide){
+        // seconds mode: 1s → 3600s (1 hour)
+        window.savedMinutesValue = parseInt(slider.value) || window.savedMinutesValue;
+        slider.min = 1;
+        slider.max = 3600;
+        slider.step = 1;
+        slider.value = window.savedSecondsPerSlide;
+      } else {
+        // minutes mode: 1 → 300 (5 hours)
+        window.savedSecondsPerSlide = parseInt(slider.value) || window.savedSecondsPerSlide;
+        slider.min = 1;
+        slider.max = 300;
+        slider.step = 1;
+        slider.value = window.savedMinutesValue;
+      }
+
+      // update the small hint next to “Break every”: slides in per-slide mode, minutes otherwise
+      const hint = document.getElementById('breakModeHint');
+      if (hint) hint.textContent = perSlide ? 'slides' : 'minutes';
+
+      // refresh UI
+      if (typeof updateTimeDisplay === 'function') updateTimeDisplay();
+      if (typeof updateEstimate === 'function') updateEstimate();
+      if (typeof updateThumbBorderColor === 'function') updateThumbBorderColor();
+    }
+
+    function toggleFavorite() {
+      const button = document.getElementById('favoriteButton');
+      const slide = currentSlide;
+
+      if (favoriteSlides.includes(slide)) {
+        favoriteSlides = favoriteSlides.filter(s => s !== slide);
+        button.textContent = '☆';
+      } else {
+        favoriteSlides.push(slide);
+        button.textContent = '★';
+      }
+    }
+
+    function updateFavoriteStar() {
+      const button = document.getElementById('favoriteButton');
+      if (favoriteSlides.includes(currentSlide)) {
+        button.textContent = '★';
+      } else {
+        button.textContent = '☆';
+      }
+    }
+
+function startSession() {
+  totalSlides = parseInt(document.getElementById("totalSlides").value);
+  const sliderVal = parseInt(document.getElementById("timeSlider").value);
+  const perSlide = document.getElementById("perSlideMode").checked;
+
+  if (isNaN(totalSlides) || totalSlides <= 0) { alert("Please enter a valid number of slides."); return; }
+  if (isNaN(sliderVal) || sliderVal <= 0) { alert("Please set a valid time value."); return; }
+
+  // session time: seconds in per-slide mode, minutes otherwise
+  totalTime = perSlide ? (sliderVal * totalSlides) : (sliderVal * 60);
+
+  // pacing plan (keep your existing builder if you have one; even split fallback)
+  perSlidePlan = (typeof buildPerSlidePlan === 'function')
+    ? buildPerSlidePlan(totalTime, totalSlides)
+    : Array.from({length: totalSlides}, () => totalTime / totalSlides);
+
+  totalRemainingTime = totalTime;
+  leftoverFromLastSlide = 0;
+  currentSlide = 1;
+
+  // first slide allocation
+  slideStartingTime = perSlidePlan[0];
+  slideTimeLeft = slideStartingTime;
+
+  lastUpdate = Date.now();
+  sessionStartTime = Date.now();
+
+  // ---- Breaks: automatic mode selection ----
+  resetBreakState(); // clears prior run
+  const every = parseInt(document.getElementById('breakEvery').value);
+  const lenMin = parseInt(document.getElementById('breakLen').value);
+  breakBySlides = !!perSlide; // auto: slides when per-slide mode is on
+
+  breakEnabled = !!every && !!lenMin;
+  breakEvery = isNaN(every) ? 0 : every;
+  breakLenSec = (isNaN(lenMin) ? 5 : lenMin) * 60;
+  plannedBreakRemainingSec = 0;
+  pendingAdvanceAfterBreak = false;
+
+  if (breakEnabled) {
+    if (breakBySlides) {
+      // number of breaks that will occur BEFORE the last slide (e.g., every 4 → before 5, 9, 13...)
+      const breaksCount = Math.floor((totalSlides - 1) / breakEvery);
+      plannedBreakRemainingSec = Math.max(0, breaksCount * breakLenSec);
+    } else {
+      // minutes-based: estimate number of breaks across total session time
+      // Simple estimate: floor(totalTime / (breakEvery*60))
+      const intervalSec = breakEvery * 60;
+      const count = Math.floor(totalTime / intervalSec);
+      plannedBreakRemainingSec = Math.max(0, count * breakLenSec);
+      // schedule the first time-based break
+      scheduleNextMinuteBreak();
+    }
+  }
+
+  // Include planned breaks in the static finish timestamp baseline
+  staticFinishTimestamp = Date.now() + (totalRemainingTime + plannedBreakRemainingSec) * 1000;
+
+  // show timer
+  const setupEl = document.getElementById("setup");
+  const timerEl = document.getElementById("timer");
+  setupEl.classList.add("hidden"); setupEl.style.display = "";
+  timerEl.classList.remove("hidden"); timerEl.style.display = "";
+
+  // show favorite star during the session
+  const favWrap = document.getElementById('favoriteButtonWrapper');
+  if (favWrap) favWrap.style.display = 'block';
+  if (typeof updateFavoriteStar === 'function') updateFavoriteStar();
+
+  if (typeof updateDisplay === 'function') updateDisplay();
+  if (typeof updateFinishTimes === "function") updateFinishTimes();
+
+  running = true;
+  tick();
+}
+
+function updateFinishTimes() {
+  // Static baseline (set at session start)
+  if (typeof staticFinishTimestamp === 'number') {
+    document.getElementById("staticFinishTime").textContent =
+      "Finish: " + formatTimeHM(new Date(staticFinishTimestamp));
+  }
+
+  // Predicted = remaining work + remaining planned breaks (dynamic)
+  const workLeft = Math.max(0, totalRemainingTime);
+  const breaksLeft = remainingPlannedBreakSeconds();
+  const predictedMs = (workLeft + breaksLeft) * 1000;
+  document.getElementById("predictedFinishTime").textContent =
+    "Predicted: " + formatTimeHM(new Date(Date.now() + predictedMs));
+}
+
+function formatTimeHM(date) {
+  let hours = date.getHours();
+  let minutes = date.getMinutes();
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12 || 12; // Convert 0 to 12
+  minutes = minutes < 10 ? '0' + minutes : minutes;
+  return `${hours}:${minutes} ${ampm}`;
+}
+
+function toggleDarkMode() {
+  document.body.classList.toggle('dark-mode');
+
+  const buttons = document.querySelectorAll('#bottomControls button');
+  buttons.forEach(btn => {
+    if (btn.innerText === '🌙' || btn.innerText === '☀️') {
+      btn.textContent = document.body.classList.contains('dark-mode') ? '☀️' : '🌙';
+    }
+  });
+}
+
+
+function adjustExtraTime(delta) {
+  const slider = document.getElementById("extraTimeSlider");
+  let value = parseInt(slider.value);
+
+  value += delta;
+
+  if (value < parseInt(slider.min)) value = parseInt(slider.min);
+  if (value > parseInt(slider.max)) value = parseInt(slider.max);
+
+  slider.value = value;
+  updateExtraTimeDisplay();
+}
+
+function showComplete() {
+  running = false;
+  resetBreakState();
+
+  const timerEl = document.getElementById("timer");
+  const completeEl = document.getElementById("complete");
+
+  timerEl.classList.add("hidden");
+  timerEl.style.display = "";
+
+  completeEl.classList.remove("hidden");
+  completeEl.style.display = "";
+
+  // hide favorite star
+  const favWrap = document.getElementById('favoriteButtonWrapper');
+  if (favWrap) favWrap.style.display = 'none';
+
+  document.getElementById("favoriteButtonWrapper").style.display = "none";
+
+  const totalTimeSpent = slideLog.reduce((sum, entry) => sum + entry.timeSpent, 0);
+  const avgTime = totalTimeSpent / slideLog.length || 0;
+  const fastest = Math.min(...slideLog.map(entry => entry.timeSpent));
+  const slowest = Math.max(...slideLog.map(entry => entry.timeSpent));
+
+  document.getElementById("summaryTotalTime").textContent = formatPreciseTime(totalTimeSpent);
+  document.getElementById("summaryAvgTime").textContent = formatPreciseTime(avgTime);
+  document.getElementById("summaryFastest").textContent = formatPreciseTime(fastest);
+  document.getElementById("summarySlowest").textContent = formatPreciseTime(slowest);
+}
+
+function restartSession() {
+  location.reload();
+  document.getElementById("favoriteButtonWrapper").style.display = "none";
+}
+
+function showNeedMoreTime() {
+  running = false;
+  resetBreakState();
+
+  const timerEl = document.getElementById("timer");
+  const nmtEl = document.getElementById("needMoreTime");
+
+  timerEl.classList.add("hidden");
+  timerEl.style.display = "";
+
+  nmtEl.classList.remove("hidden");
+  nmtEl.style.display = "";
+
+  // hide favorite star
+  const favWrap = document.getElementById('favoriteButtonWrapper');
+  if (favWrap) favWrap.style.display = 'none';
+}
+
+function addExtraTime() {
+  const extraMinutes = parseInt(document.getElementById("extraTimeSlider").value);
+  if (isNaN(extraMinutes) || extraMinutes <= 0) {
+    alert("Please select a valid time.");
+    return;
+  }
+  const extraSec = extraMinutes * 60;
+
+  // add to totals
+  totalRemainingTime += extraSec;
+
+  // distribute proportionally across the remaining planned slides (including current)
+  const startIdx = currentSlide - 1;
+  const remainingPlanSum = perSlidePlan.slice(startIdx).reduce((s,x)=>s+x,0) || 1;
+  for (let i = startIdx; i < perSlidePlan.length; i++){
+    const share = perSlidePlan[i] / remainingPlanSum;
+    perSlidePlan[i] += extraSec * share;
+  }
+
+  // reset current slide to its new planned budget from now
+  const elapsedOnSlide = Math.max(0, slideStartingTime - slideTimeLeft);
+  slideStartingTime = perSlidePlan[startIdx];
+  slideTimeLeft = Math.max(0, slideStartingTime - elapsedOnSlide);
+
+  // refresh static finish prediction
+  staticFinishTimestamp = Date.now() + totalRemainingTime * 1000;
+
+  // Resume UI
+  document.getElementById("needMoreTime").style.display = "none";
+  document.getElementById("timer").style.display = "block";
+
+  lastUpdate = Date.now();
+  tick();
+}
+
+function openFavoritesPopup() {
+  const popup = document.getElementById('favoritesPopup');
+  const list = document.getElementById('favoritesList');
+
+  popup.classList.remove('hidden');
+  popup.style.display = 'flex';
+  list.innerHTML = '';
+
+  if (favoriteSlides.length === 0) {
+    list.innerHTML = '<div>No favorites yet!</div>';
+    return;
+  }
+
+  favoriteSlides.sort((a, b) => a - b).forEach(slide => {
+    const item = document.createElement('div');
+    item.style.fontWeight = 'bold';
+    item.textContent = `Slide ${slide}`;
+    list.appendChild(item);
+  });
+}
+
+function closeFavoritesPopup() {
+  const popup = document.getElementById('favoritesPopup');
+  popup.classList.add('hidden');
+  popup.style.display = 'none';
+  document.body.style.overflow = 'auto'; // 🔥 UNLOCK SCROLL
+}
+
+function drawSlideRing(percent, text, slideSeconds) {
+    const canvas = document.getElementById('slideRing');
+    const ctx = canvas.getContext('2d');
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const radius = 50;
+    const startAngle = -0.5 * Math.PI;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Background full gray circle
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+    ctx.strokeStyle = '#ccc';
+    ctx.lineWidth = 8;
+    ctx.stroke();
+
+    ctx.beginPath();
+
+    let drawPercent = percent;
+    if (drawPercent < 0) {
+        drawPercent = 1; // Full circle when negative
+    }
+
+    const endAngle = startAngle + drawPercent * 2 * Math.PI;
+
+    if (slideSeconds >= 0) {
+        // Normal: gray to blue
+        const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+        gradient.addColorStop(0, "#ccc");
+        gradient.addColorStop(1, "#007aff");
+        ctx.strokeStyle = gradient;
+    } else {
+        // Negative: soft red gradient
+        const redGradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+        redGradient.addColorStop(0, "#ff9999");
+        redGradient.addColorStop(1, "#ff4d4d");
+        ctx.strokeStyle = redGradient;
+    }
+
+    ctx.lineWidth = 8;
+    ctx.lineCap = 'round';
+    ctx.arc(centerX, centerY, radius, startAngle, endAngle);
+    ctx.stroke();
+
+    // Update text inside
+    document.getElementById('slideTimeLeft').textContent = text;
+}
+
+function openLogPopup() {
+  const popup = document.getElementById('logPopup');
+  const logList = document.getElementById('logList');
+  popup.classList.remove('hidden');
+  popup.style.display = 'flex'; // ✅ Only flex when opening
+  logList.innerHTML = '';
+
+  if (slideLog.length === 0 && (!window.logEntries || window.logEntries.length === 0)) {
+    logList.innerHTML = '<div>No log yet.</div>';
+    return;
+  }
+
+  if (useRankingMode) {
+    // 🔥 New: Ranking-based color
+    const sortedTimes = [...slideLog].sort((a, b) => a.timeSpent - b.timeSpent);
+    const slideRank = {};
+    sortedTimes.forEach((entry, index) => {
+      slideRank[entry.slide] = index;
+    });
+    const totalSlides = sortedTimes.length;
+
+    slideLog.forEach(entry => {
+      const rank = slideRank[entry.slide];
+      const ratio = rank / (totalSlides - 1 || 1);
+
+      // Dark muted green to dark muted red
+      const startGreen = [40, 140, 40];   // Dark green
+      const endRed = [180, 50, 50];        // Dark red
+
+      const interpolated = startGreen.map((start, i) => 
+        Math.round(start + (endRed[i] - start) * ratio)
+      );
+
+      const color = `rgb(${interpolated[0]}, ${interpolated[1]}, ${interpolated[2]})`;
+      const timeText = formatPreciseTime(entry.timeSpent);
+
+      const row = document.createElement('div');
+      row.style.display = 'flex';
+      row.style.alignItems = 'center';
+      row.style.justifyContent = 'center';
+      row.style.fontSize = '14px';
+      row.style.padding = '6px 0';
+      row.style.gap = '30px'; // spacing between columns
+
+      row.innerHTML = `
+        <div style="font-weight: 500; width: 90px; text-align: left;">Slide ${entry.slide}</div>
+        <div style="font-family: monospace; width: 90px; text-align: right; color: ${color}; font-weight: bold;">${timeText}</div>
+      `;
+
+      logList.appendChild(row);
+
+      // Only add divider if not the last entry
+      if (entry !== slideLog[slideLog.length - 1]) {
+        const divider = document.createElement('div');
+        divider.style.height = '1px';
+        divider.style.background = '#ccc';
+        divider.style.width = '80%';
+        divider.style.margin = '0 auto';
+        logList.appendChild(divider);
+      }
+    });
+    } else {
+    // 🧹 Old: Min/Max Distance-based color
+    const times = slideLog.map(entry => entry.timeSpent);
+    const minTime = Math.min(...times);
+    const maxTime = Math.max(...times);
+
+    slideLog.forEach(entry => {
+      let ratio = (entry.timeSpent - minTime) / (maxTime - minTime || 1);
+      ratio = Math.min(Math.max(ratio, 0), 1);
+
+      // Dark muted green to dark muted red
+      const startGreen = [40, 140, 40];   // Dark green
+      const endRed = [180, 50, 50];       // Dark red
+
+      const interpolated = startGreen.map((start, i) => 
+        Math.round(start + (endRed[i] - start) * ratio)
+      );
+
+      const color = `rgb(${interpolated[0]}, ${interpolated[1]}, ${interpolated[2]})`;
+      const timeText = formatPreciseTime(entry.timeSpent);
+
+      const row = document.createElement('div');
+      row.style.display = 'flex';
+      row.style.alignItems = 'center';
+      row.style.justifyContent = 'center';
+      row.style.fontSize = '14px';
+      row.style.padding = '6px 0';
+      row.style.gap = '30px';
+
+      row.innerHTML = `
+        <div style="font-weight: 500; width: 90px; text-align: left;">Slide ${entry.slide}</div>
+        <div style="font-family: monospace; width: 90px; text-align: right; color: ${color}; font-weight: bold;">${timeText}</div>
+      `;
+      logList.appendChild(row);
+
+      // divider between slide rows
+      if (entry !== slideLog[slideLog.length - 1]) {
+        const divider = document.createElement('div');
+        divider.style.height = '1px';
+        divider.style.background = '#ccc';
+        divider.style.width = '80%';
+        divider.style.margin = '0 auto';
+        logList.appendChild(divider);
+      }
+    });
+  }
+
+  // ✅ now append break rows AFTER all slide rows
+  renderLog();
+}
+
+function closeLogPopup() {
+  const popup = document.getElementById('logPopup');
+  popup.classList.add('hidden');
+  popup.style.display = 'none'; // ✅ Hide flex when closing
+}
+
+function toggleLogMode() {
+  useRankingMode = !useRankingMode;
+  openLogPopup(); // 🔄 Redraw log immediately in new mode
+}
+
+function formatPreciseTime(seconds) {
+  const hrs = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = (seconds % 60).toFixed(2); // Keep 2 decimals
+
+  let parts = [];
+  if (hrs > 0) parts.push(`${hrs}hr`);
+  if (mins > 0) parts.push(`${mins}m`);
+  parts.push(`${secs}s`);
+
+  return parts.join(' ');
+}
+
+function formatPrettyTime(seconds) {
+  const hrs = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+  return `${hrs > 0 ? hrs + "hr " : ""}${mins > 0 ? mins + "m " : ""}${secs}s`;
+}
+
+function updateTimeDisplay() {
+  const slider = document.getElementById("timeSlider");
+  const display = document.getElementById("timeDisplay");
+  const perSlide = isPerSlideMode();
+  const v = parseInt(slider.value) || 0;
+
+  if (perSlide){
+    // seconds formatting
+    let str = "";
+    if (v < 60) str = `${v} sec`;
+    else if (v < 3600) {
+      const m = Math.floor(v/60), s = v%60;
+      str = `${m} min ${s} sec`;
+    } else str = "1 hr 0 min";
+    display.textContent = `${str} per slide`;
+  } else {
+    // minutes formatting (your original behavior)
+    if (v < 60) display.textContent = `${v} min`;
+    else {
+      const h = Math.floor(v/60), m = v%60;
+      display.textContent = `${h} hr${h>1?"s":""} ${m} min`;
+    }
+  }
+}
+
+function adjustTime(delta) {
+  const slider = document.getElementById("timeSlider");
+  let value = parseInt(slider.value);
+  
+  value += delta;
+  
+  if (value < parseInt(slider.min)) value = parseInt(slider.min);
+  if (value > parseInt(slider.max)) value = parseInt(slider.max);
+
+  slider.value = value;
+  updateTimeDisplay();
+  updateThumbBorderColor();
+}
+
+function updateThumbBorderColor() {
+  const slider = document.getElementById("timeSlider");
+  const value = (slider.value - slider.min) / (slider.max - slider.min);
+
+  // Interpolate between gray (#ccc) and blue (#007aff)
+  const gray = [204, 204, 204];
+  const blue = [0, 122, 255];
+  const interpolated = gray.map((start, i) =>
+    Math.round(start + (blue[i] - start) * value)
+  );
+
+  const color = `rgb(${interpolated[0]}, ${interpolated[1]}, ${interpolated[2]})`;
+  slider.style.setProperty('--thumb-border', color);
+}
+
+function isPerSlideMode() {
+  return document.getElementById("perSlideMode").checked;
+}
+
+function formatHoursMinutes(totalMinutes) {
+  const hours = Math.floor(totalMinutes / 60);
+  const mins = totalMinutes % 60;
+  if (hours <= 0) return `${mins} min`;
+  return `${hours} hr${hours > 1 ? "s" : ""} ${mins} min`;
+}
+
+function formatHMSExact(totalSeconds){
+  const s = Math.max(0, Math.round(totalSeconds)); // keep seconds precision
+  const h = Math.floor(s/3600);
+  const m = Math.floor((s%3600)/60);
+  const sec = s%60;
+  const parts = [];
+  if (h>0) parts.push(`${h} hr${h!==1?'s':''}`);
+  if (m>0 || h>0) parts.push(`${m} min`);
+  parts.push(`${sec} sec`);
+  return parts.join(' ');
+}
+
+function updateEstimate() {
+  const estEl = document.getElementById("estimate");
+  const estText = document.getElementById("estimateText");
+  const perSlide = isPerSlideMode();
+
+  const slidesVal = parseInt(document.getElementById("totalSlides").value);
+  const slider = document.getElementById("timeSlider");
+  const raw = parseInt(slider.value);
+
+  if (!perSlide) { estEl.classList.add("hidden"); return; }
+  if (!(slidesVal>0 && raw>0)) { estEl.classList.add("hidden"); return; }
+
+  // If you later switch the slider to seconds in per-slide mode, this stays correct.
+  const sliderIsSeconds = perSlide && parseInt(slider.max) > 300; // 300 = minutes mode cap
+  const perSlideSeconds = sliderIsSeconds ? raw : raw * 60;
+
+  const totalSeconds = slidesVal * perSlideSeconds;
+  estText.textContent = formatHMSExact(totalSeconds);
+  estEl.classList.remove("hidden");
+
+  // If you also show an ETA element on the setup screen, update it here:
+  const eta = document.getElementById("estimateETA");
+  if (eta) eta.textContent = clockETA(totalSeconds * 1000);
+}
+
+        function updateExtraTimeDisplay() {
+    const slider = document.getElementById("extraTimeSlider");
+    const display = document.getElementById("extraTimeDisplay");
+    const value = parseInt(slider.value);
+
+    if (value < 60) {
+        display.textContent = `${value} min`;
+    } else {
+        const hours = Math.floor(value / 60);
+        const minutes = value % 60;
+        display.textContent = `${hours} hr${hours > 1 ? "s" : ""} ${minutes} min`;
+    }
+    }
+
+    function formatTime(seconds) {
+        const sign = seconds < 0 ? "-" : "";
+        seconds = Math.abs(seconds);
+
+        const hrs = Math.floor(seconds / 3600);
+        const mins = Math.floor((seconds % 3600) / 60);
+        const secs = Math.floor(seconds % 60);
+
+        let parts = [];
+        if (hrs > 0) parts.push(`${hrs}h`);
+        if (mins > 0 || hrs > 0) parts.push(`${mins}m`);
+        parts.push(`${secs}s`);
+
+        return sign + parts.join(' ');
+    }
+
+    function updateDisplay() {
+        document.getElementById("slideNum").textContent = currentSlide;
+        document.getElementById("slideTotal").textContent = totalSlides;
+
+        const rawSlidePercent = slideTimeLeft / slideStartingTime;
+        const safeSlidePercent = Math.max(0, rawSlidePercent);
+        drawSlideRing(rawSlidePercent, formatTime(slideTimeLeft), slideTimeLeft);
+
+        const timePercent = Math.max(0, totalRemainingTime / totalTime);
+        const bar = document.getElementById("timeBar");
+        bar.style.width = `${timePercent * 100}%`;
+
+        document.getElementById("timeLeft").textContent = formatTime(totalRemainingTime);
+    }
+
+    function nextSlide() {
+      if (!running) return;
+
+      // Apply time spent on the current slide before deciding anything
+      applyElapsed();
+
+      // If we just ended a break and need to advance once without checking a break, do that
+      if (suppressBreakOnce) {
+        suppressBreakOnce = false; // consume the suppress
+      } else {
+        // We are about to advance from currentSlide -> next (currentSlide+1)
+        const nextSlideNum = currentSlide + 1;
+
+        // Slide-based breaks: trigger ONLY after finishing each Nth slide,
+        // i.e., when trying to go past N (2->3, 4->5, 6->7, etc.)
+        if (breakEnabled && breakBySlides && !inBreak) {
+          const atBoundary = (breakEvery > 0) && (currentSlide % breakEvery === 0);
+          const canStillAdvance = currentSlide < totalSlides; // not on last slide
+          if (atBoundary && canStillAdvance) {
+            pendingAdvanceAfterBreak = true;   // we owe one advance after break
+            breakAfterSlide = currentSlide;      // we’re taking a break *after* this slide
+            breakStartMs = Date.now();           // start timing the break
+            showBreak(breakLenSec);
+            return; // stop here; we'll advance after the break
+          }
+        }
+      }
+
+      // Normal advance
+      if (currentSlide < totalSlides) {
+        const nextSlideNum = currentSlide + 1;
+
+        leftoverFromLastSlide = slideTimeLeft;
+        currentSlide = nextSlideNum;
+
+        // planned budget for the new slide, plus any leftover carry (pos/neg)
+        const plan = perSlidePlan[currentSlide - 1] || (totalRemainingTime / (totalSlides - currentSlide + 1));
+        slideStartingTime = plan + leftoverFromLastSlide;
+        slideTimeLeft = slideStartingTime;
+
+        lastUpdate = Date.now();
+        updateDisplay();
+        if (typeof updateFavoriteStar === 'function') updateFavoriteStar();
+      } else {
+        showComplete();
+      }
+    }
+
+    function prevSlide() {
+      applyElapsed();
+      if (currentSlide > 1) {
+        currentSlide--;
+        // going back gives you the planned time for that slide (no carry)
+        slideStartingTime = perSlidePlan[currentSlide-1];
+        slideTimeLeft = slideStartingTime;
+        lastUpdate = Date.now();
+      }
+      updateDisplay();
+      updateFavoriteStar && updateFavoriteStar();
+    }
+
+    function getCurrentSlideTimeMax() {
+        return totalRemainingTime / (totalSlides - currentSlide + 1);
+    }
+
+    function applyElapsed() {
+      const now = Date.now();
+      const elapsed = (now - lastUpdate) / 1000;
+
+      if (!slideLog.find(entry => entry.slide === currentSlide)) {
+        slideLog.push({
+          slide: currentSlide,
+          timeSpent: (slideStartingTime - slideTimeLeft) + elapsed
+        });
+        totalCompletedSlideTime += (slideStartingTime - slideTimeLeft) + elapsed;
+      }
+
+      slideTimeLeft -= elapsed;
+      totalRemainingTime -= elapsed;
+      lastUpdate = now;
+    }
+
+    function pauseResume() {
+    const pauseCheckbox = document.getElementById("pauseCheckbox");
+    paused = !pauseCheckbox.checked;
+    if (!paused) {
+        lastUpdate = Date.now();
+    }
+    }
+
+function tick() {
+  if (!paused) {
+    const now = Date.now();
+    const elapsed = (now - lastUpdate) / 1000;
+    slideTimeLeft -= elapsed;
+    totalRemainingTime -= elapsed;
+    lastUpdate = now;
+
+    updateDisplay();
+    updateFinishTimes && updateFinishTimes();
+
+    // check time-based breaks
+    maybeTriggerBreak();
+
+    if (totalRemainingTime <= 0) {
+      if (currentSlide >= totalSlides) { showComplete(); }
+      else { showNeedMoreTime(); }
+      return;
+    }
+  }
+  requestAnimationFrame(tick);
+}
+
+document.addEventListener('change', (e)=>{
+  if (e.target && e.target.id === 'pacingProfile'){
+    document.getElementById('weightsRow').style.display =
+      e.target.value === 'weights' ? 'flex' : 'none';
+  }
+});
+
+window.addEventListener('DOMContentLoaded', () => {
+    // clear stale break state and set up initial UI
+    if (typeof resetBreakState === 'function') resetBreakState();
+
+    // initial UI setup you had
+    if (typeof updateThumbBorderColor === 'function') updateThumbBorderColor();
+    if (typeof applyModeLimits === 'function') applyModeLimits();
+    if (typeof updateTimeDisplay === 'function') updateTimeDisplay();
+    if (typeof updateEstimate === 'function') updateEstimate();
+
+    // === Wire break UI events (add once) ===
+    const everyEl = document.getElementById('breakEvery');
+    if (everyEl) {
+      everyEl.addEventListener('input', updateBreakUIVisibility);
+    }
+
+    const perSlideBox = document.getElementById('perSlideMode');
+    if (perSlideBox){
+      perSlideBox.addEventListener('change', updateBreakModeHint);
+    }
+
+    // === Initialize break UI visibility/hints ===
+    if (typeof updateBreakModeHint === 'function') updateBreakModeHint();
+    if (typeof updateBreakUIVisibility === 'function') updateBreakUIVisibility();
+  });
+
+  </script>
+</body>
+</html>

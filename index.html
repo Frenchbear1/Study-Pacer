@@ -1395,15 +1395,17 @@ function updateFinishTimes() {
       "Finish: " + formatTimeHM(new Date(staticFinishTimestamp));
   }
 
-  // Predicted = remaining work based on actual pace + remaining planned breaks (dynamic)
-  const remainingSlides = Math.max(1, totalSlides - currentSlide + 1);
-  const currentElapsed = Math.max(0, slideStartingTime - slideTimeLeft);
+  // Predicted = based only on completed slides' average
   const completedCount = slideLog.length;
-  const effectiveCount = completedCount + (currentElapsed > 0 ? 1 : 0);
-  const avgActual = effectiveCount > 0 ? (totalCompletedSlideTime + currentElapsed) / effectiveCount : 0;
-  const plannedAvg = totalSlides > 0 ? (totalTime / totalSlides) : 0;
-  const avgPerSlide = (avgActual > 0 ? avgActual : plannedAvg) || 0;
-  const workLeft = Math.max(0, (avgPerSlide * remainingSlides) - currentElapsed);
+  if (completedCount === 0) {
+    document.getElementById("predictedFinishTime").textContent =
+      "Predicted: --:--";
+    return;
+  }
+
+  const remainingSlides = Math.max(1, totalSlides - currentSlide + 1);
+  const avgCompleted = totalCompletedSlideTime / completedCount;
+  const workLeft = Math.max(0, avgCompleted * remainingSlides);
   const breaksLeft = remainingPlannedBreakSeconds();
   const predictedMs = (workLeft + breaksLeft) * 1000;
   document.getElementById("predictedFinishTime").textContent =

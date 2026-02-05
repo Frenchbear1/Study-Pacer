@@ -471,6 +471,20 @@ body.dark-mode .summary-card {
   background: #1e1e1e;
   color: #eee;
 }
+body.dark-mode select,
+body.dark-mode option {
+  background: #1e1e1e;
+  color: #eee;
+}
+body.dark-mode .switch-pill {
+  background: #1e1e1e;
+  border-color: #333;
+}
+body.dark-mode #weightsInput {
+  background: #1e1e1e;
+  color: #eee;
+  border-color: #333;
+}
 
 body.dark-mode .cssbuttons-io-button {
   background: linear-gradient(to bottom, #444, #007aff);
@@ -1381,8 +1395,15 @@ function updateFinishTimes() {
       "Finish: " + formatTimeHM(new Date(staticFinishTimestamp));
   }
 
-  // Predicted = remaining work + remaining planned breaks (dynamic)
-  const workLeft = Math.max(0, totalRemainingTime);
+  // Predicted = remaining work based on actual pace + remaining planned breaks (dynamic)
+  const remainingSlides = Math.max(1, totalSlides - currentSlide + 1);
+  const currentElapsed = Math.max(0, slideStartingTime - slideTimeLeft);
+  const completedCount = slideLog.length;
+  const effectiveCount = completedCount + (currentElapsed > 0 ? 1 : 0);
+  const avgActual = effectiveCount > 0 ? (totalCompletedSlideTime + currentElapsed) / effectiveCount : 0;
+  const plannedAvg = totalSlides > 0 ? (totalTime / totalSlides) : 0;
+  const avgPerSlide = (avgActual > 0 ? avgActual : plannedAvg) || 0;
+  const workLeft = Math.max(0, (avgPerSlide * remainingSlides) - currentElapsed);
   const breaksLeft = remainingPlannedBreakSeconds();
   const predictedMs = (workLeft + breaksLeft) * 1000;
   document.getElementById("predictedFinishTime").textContent =
@@ -1400,11 +1421,13 @@ function formatTimeHM(date) {
 
 function toggleDarkMode() {
   document.body.classList.toggle('dark-mode');
+  const isDark = document.body.classList.contains('dark-mode');
+  localStorage.setItem('studyPacerDarkMode', isDark ? '1' : '0');
 
   const buttons = document.querySelectorAll('#bottomControls button');
   buttons.forEach(btn => {
     if (btn.innerText === '🌙' || btn.innerText === '☀️') {
-      btn.textContent = document.body.classList.contains('dark-mode') ? '☀️' : '🌙';
+      btn.textContent = isDark ? '☀️' : '🌙';
     }
   });
 }
@@ -1999,6 +2022,14 @@ document.addEventListener('change', (e)=>{
 });
 
 window.addEventListener('DOMContentLoaded', () => {
+    // restore dark mode preference
+    const savedDark = localStorage.getItem('studyPacerDarkMode') === '1';
+    if (savedDark) document.body.classList.add('dark-mode');
+    const dmBtn = document.querySelector('#bottomControls button');
+    if (dmBtn && (dmBtn.innerText === '🌙' || dmBtn.innerText === '☀️')) {
+      dmBtn.textContent = document.body.classList.contains('dark-mode') ? '☀️' : '🌙';
+    }
+
     // clear stale break state and set up initial UI
     if (typeof resetBreakState === 'function') resetBreakState();
 

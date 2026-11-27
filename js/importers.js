@@ -8,6 +8,7 @@
 //          at paragraph boundaries, starting a new page at big headings
 import { parsePptx } from './pptx.js';
 import { store, uid } from './store.js';
+import { readLocal, fileUrl } from './native.js';
 
 export const ACCEPT = '.pdf,.pptx,.docx,.html,.htm,.xhtml,.epub,.md,.markdown,.txt,.text,.png,.jpg,.jpeg,.webp,.gif,.svg,.avif';
 const IMG = /^(png|jpe?g|webp|gif|svg|avif)$/;
@@ -25,7 +26,7 @@ export const LABEL = { pdf: 'PDF', pptx: 'Slides', docx: 'Word', html: 'Web', ht
 export const labelOf = (d) => (d.kind === 'images' ? 'Images' : LABEL[d.ext] || d.ext.toUpperCase());
 
 const countWords = (s) => (s.match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu) || []).length;
-const baseName = (n) => n.replace(/\.[a-z0-9]+$/i, '').replace(/[_]+/g, ' ').trim();
+export const baseName = (n) => n.replace(/\.[a-z0-9]+$/i, '').replace(/[_]+/g, ' ').trim();
 
 // ---------- loaders for the big libraries, only when needed ----------
 const loaded = {};
@@ -48,7 +49,8 @@ const mammoth = () => script('vendor/mammoth.browser.min.js', 'mammoth');
 
 // ---------- one entry point ----------
 // files: File[]; onStep(fileIndex, fraction, label)
-export async function importFiles(files, onStep) {
+// photos: { as: 'one' | 'each', name } — several photos become one collection (read in name order) or a document each
+export async function importFiles(files, onStep, photos = {}) {
   const out = [];
   const errors = [];
   const images = [];
@@ -69,7 +71,10 @@ export async function importFiles(files, onStep) {
     }
   }
   if (images.length) {
-    try { out.push(await importImages(images)); } catch (e) { errors.push(`Images: ${e.message}`); }
+    try {
+      if (photos.as === 'each' && images.length > 1) for (const im of images) out.push(await importImages([im]));
+      else out.push(await importImages(images, photos.name));
+    } catch (e) { errors.push(`Photos: ${e.message}`); }
   }
   return { docs: out, errors };
 }
@@ -78,28 +83,53 @@ async function importOne(file, kind, onProgress) {
   const ext = extOf(file.name);
   const base = { id: uid(), name: baseName(file.name), file: file.name, ext, kind, size: file.size, added: Date.now(), pos: 0, read: [] };
   const buf = await file.arrayBuffer();
-  let doc;
-  if (kind === 'pdf') doc = { ...base, ...(await fromPdf(buf, onProgress)) };
-  else if (kind === 'slides') {
-    await jszip();
-    const deck = await parsePptx(buf, onProgress);
-    if (!deck.slides.length) throw new Error('no slides found');
-    await store.putContent(base.id, deck);
-    doc = { ...base, units: deck.slides.length, unit: 'slide', words: deck.slides.map((s) => s.words), heads: deck.slides.map((s) => s.title), aspect: deck.w / deck.h };
-  } else {
-    const html = await flowHtml(buf, ext, file.name);
-    const chunks = paginate(html.html);
-    if (!chunks.length) throw new Error('nothing to read in it');
-    await store.putContent(base.id, { chunks: chunks.map((c) => c.html) });
-    doc = { ...base, units: chunks.length, unit: 'page', words: chunks.map((c) => c.words), heads: chunks.map((c) => c.head), title: html.title };
-    if (html.title && html.title.length < 120) doc.name = html.title;
-  }
+  const doc = { ...base, ...(await analyze(buf, kind, ext, base.id, onProgress)) };
   await store.putFile(base.id, new Blob([buf], { type: file.type || 'application/octet-stream' }));
   await store.putDoc(doc);
   return doc;
 }
 
-async function importImages(files) {
+// What's worked out from a file: its units, words per unit, headings, shape and preview. Slides and reflowed
+// documents also keep their parsed content (so they open instantly); the file itself is never needed for those.
+async function analyze(buf, kind, ext, id, onProgress) {
+  if (kind === 'pdf') return fromPdf(buf, onProgress);
+  if (kind === 'slides') {
+    await jszip();
+    const deck = await parsePptx(buf, onProgress);
+    if (!deck.slides.length) throw new Error('no slides found');
+    await store.putContent(id, deck);
+    return { units: deck.slides.length, unit: 'slide', words: deck.slides.map((s) => s.words), heads: deck.slides.map((s) => s.title), aspect: deck.w / deck.h };
+  }
+  const html = await flowHtml(buf, ext);
+  const chunks = paginate(html.html);
+  if (!chunks.length) throw new Error('nothing to read in it');
+  await store.putContent(id, { chunks: chunks.map((c) => c.html) });
+  const out = { units: chunks.length, unit: 'page', words: chunks.map((c) => c.words), heads: chunks.map((c) => c.head) };
+  if (html.title && html.title.length < 120) out.title = html.title;
+  return out;
+}
+
+// A document that lives in a folder on the computer (Windows app): read it from disk and work it out,
+// keeping your progress and any name you gave it.
+export async function indexLocal(doc, onProgress) {
+  if (doc.kind === 'images') {
+    const first = await readLocal(doc.paths[0]);
+    const dims = await imageSize(first);
+    const fields = { units: doc.paths.length, unit: 'page', words: doc.paths.map(() => 0), heads: doc.paths.map((p) => baseName(p.split(/[\\/]/).pop())), aspect: dims ? dims.w / dims.h : 0.77, thumb: await thumbFromBlob(first) };
+    await store.putContent(doc.id, { paths: doc.paths });
+    return { ...doc, ...fields, pending: false, error: null };
+  }
+  const buf = await (await readLocal(doc.path)).arrayBuffer();
+  const fields = await analyze(buf, doc.kind, doc.ext, doc.id, onProgress);
+  const next = { ...doc, ...fields, pending: false, error: null };
+  // files in your folders keep their file names (that's how you organised them)
+  // pages read that no longer exist (the file got shorter) are dropped
+  next.read = (doc.read || []).filter((i) => i < next.units);
+  next.pos = Math.min(doc.pos || 0, next.units - 1);
+  return next;
+}
+
+async function importImages(files, name) {
   files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
   const id = uid();
   const blobs = files.map((f) => new Blob([f], { type: f.type }));
@@ -107,12 +137,26 @@ async function importImages(files) {
   const dims = await Promise.all(blobs.slice(0, 1).map(imageSize));
   const thumb = await thumbFromBlob(blobs[0]);
   const doc = {
-    id, kind: 'images', ext: extOf(files[0].name), name: files.length === 1 ? baseName(files[0].name) : `${baseName(files[0].name)} + ${files.length - 1} more`,
+    id, kind: 'images', collection: files.length > 1 || !!name, ext: extOf(files[0].name), name: name?.trim() || (files.length === 1 ? baseName(files[0].name) : `${baseName(files[0].name)} + ${files.length - 1} more`),
     file: files[0].name, size: files.reduce((s, f) => s + f.size, 0), added: Date.now(), pos: 0, read: [],
     units: files.length, unit: 'page', words: files.map(() => 0), heads: files.map((f) => baseName(f.name)), aspect: dims[0] ? dims[0].w / dims[0].h : 0.77, thumb,
   };
   await store.putDoc(doc);
   return doc;
+}
+// More photos into an existing collection: after what's there, or everything re-sorted by name.
+export async function addToCollection(doc, files, { sort = false } = {}) {
+  const c = await store.getContent(doc.id);
+  const add = [...files].filter((f) => kindOf(f.name) === 'images').sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  if (!add.length) return { doc, added: 0 };
+  let items = (c.images || []).map((b, i) => ({ b, h: doc.heads?.[i] || `Photo ${i + 1}` }));
+  items.push(...add.map((f) => ({ b: new Blob([f], { type: f.type }), h: baseName(f.name) })));
+  if (sort) items.sort((a, b) => a.h.localeCompare(b.h, undefined, { numeric: true }));
+  await store.putContent(doc.id, { images: items.map((x) => x.b) });
+  const next = { ...doc, collection: true, units: items.length, words: items.map(() => 0), heads: items.map((x) => x.h), size: (doc.size || 0) + add.reduce((s2, f) => s2 + f.size, 0) };
+  if (!doc.thumb || sort) next.thumb = await thumbFromBlob(items[0].b);
+  await store.putDoc(next);
+  return { doc: next, added: add.length };
 }
 function imageSize(blob) {
   return new Promise((res) => { const u = URL.createObjectURL(blob); const im = new Image(); im.onload = () => { res({ w: im.naturalWidth, h: im.naturalHeight }); URL.revokeObjectURL(u); }; im.onerror = () => res(null); im.src = u; });
@@ -190,7 +234,7 @@ async function fromPdf(buf, onProgress) {
 }
 
 // ---------- reflowed documents ----------
-async function flowHtml(buf, ext, name) {
+async function flowHtml(buf, ext) {
   if (ext === 'docx') {
     const m = await mammoth();
     const r = await m.convertToHtml({ arrayBuffer: buf }, { styleMap: ['p[style-name=\'Title\'] => h1.title:fresh', 'p[style-name=\'Subtitle\'] => p.subtitle:fresh'] });

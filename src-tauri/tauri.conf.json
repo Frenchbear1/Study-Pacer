@@ -1,0 +1,37 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Study Pacer",
+  "version": "1.0.0",
+  "identifier": "com.davidlabarre.studypacer",
+  "build": {
+    "frontendDist": "../www",
+    "beforeBuildCommand": "node scripts/build-www.mjs"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "Study Pacer",
+        "width": 1280,
+        "height": 840,
+        "minWidth": 420,
+        "minHeight": 520,
+        "center": true,
+        "dragDropEnabled": false,
+        "backgroundColor": "#f5f4f1"
+      }
+    ],
+    "security": {
+      "csp": null,
+      "assetProtocol": { "enable": true, "scope": ["**"] }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.png", "icons/icon.ico"],
+    "windows": { "nsis": { "installMode": "currentUser" } },
+    "shortDescription": "Read your documents and pace yourself through them",
+    "publisher": "David LaBarre"
+  }
+}

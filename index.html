@@ -37,13 +37,18 @@
       <div class="tb-actions">
         <button class="icon-btn" data-act="themes" aria-label="Reading theme" title="Reading theme (T)"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.8 1.8-1.7 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-1 .8-1.7 1.8-1.7H17a4 4 0 0 0 4-4C21 6.6 17 3 12 3Z"/><circle cx="7.5" cy="11" r="1.2"/><circle cx="10" cy="7.3" r="1.2"/><circle cx="14.5" cy="7.3" r="1.2"/></svg></button>
         <button class="icon-btn" data-act="settings" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button>
-        <button class="btn primary" data-act="import"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>Import</span></button>
+        <button class="icon-btn desk-only" data-act="refresh" aria-label="Check folders for changes" title="Check folders for changes"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.4-5.7L20 8.5"/><path d="M20 3.5v5h-5"/></svg></button>
+        <button class="btn desk-only" data-act="import" title="Import files (copies them into the app)"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>Import</span></button>
+        <button class="btn primary desk-only" data-act="addFolder"><svg viewBox="0 0 24 24"><path d="M3.5 7.5A2 2 0 0 1 5.5 5.5h4l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2Z"/><path d="M12 11v5M9.5 13.5h5"/></svg><span>Add folder</span></button>
+        <button class="btn primary web-only" data-act="import"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>Import</span></button>
       </div>
     </header>
+    <aside class="tree" id="tree" aria-label="Folders"></aside>
     <main class="lib-main">
+      <div class="lib-status" id="libStatus" hidden></div>
       <div id="hero"></div>
       <div class="lib-head" id="libHead" hidden>
-        <h2>Your documents</h2>
+        <nav class="crumbs" id="crumbs" aria-label="Folder"></nav>
         <div class="lib-head-r">
           <button class="link" data-act="selectAll">Select all</button>
           <div class="seg small" id="sortSeg" role="group" aria-label="Sort"><button data-sort="recent" aria-pressed="true">Recent</button><button data-sort="name" aria-pressed="false">Name</button><button data-sort="progress" aria-pressed="false">Progress</button></div>
@@ -54,8 +59,9 @@
         <div class="empty-art" aria-hidden="true"><span class="ea ea1"></span><span class="ea ea2"></span><span class="ea ea3"></span></div>
         <h1>Read it. Pace it. Finish it.</h1>
         <p>Bring in your PDFs, PowerPoints, Word files, web pages, EPUBs and notes. Read them here in your own theme, and Study Pacer keeps you on time across all of them.</p>
-        <button class="btn primary big" data-act="import"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>Import documents</span></button>
-        <small class="muted">or drop files anywhere · PDF · PPTX · DOCX · HTML · EPUB · MD · TXT · images</small>
+        <button class="btn primary big desk-only" data-act="addFolder"><svg viewBox="0 0 24 24"><path d="M3.5 7.5A2 2 0 0 1 5.5 5.5h4l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2Z"/><path d="M12 11v5M9.5 13.5h5"/></svg><span>Add a folder</span></button>
+        <button class="btn primary big web-only" data-act="import"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>Import documents</span></button>
+        <small class="muted"><span class="desk-only">Subfolders become folders here too. </span>Or drop files anywhere · PDF · PPTX · DOCX · HTML · EPUB · MD · TXT · images</small>
       </div>
     </main>
     <div class="selbar glass-bottom" id="selbar" hidden>

@@ -3,6 +3,7 @@
 import { store } from './store.js';
 import { pdfjs } from './importers.js';
 import { renderSlide } from './pptx.js';
+import { fileUrl } from './native.js';
 
 const DPR = () => Math.min(2.5, window.devicePixelRatio || 1);
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -25,7 +26,7 @@ export function loadDoc(doc) {
       for (const [k, b] of Object.entries(c.media || {})) if (b) urls[k] = URL.createObjectURL(b);
       return { kind: 'slides', deck: c, urls };
     }
-    if (doc.kind === 'images') return { kind: 'images', urls: c.images.map((b) => URL.createObjectURL(b)) };
+    if (doc.kind === 'images') return { kind: 'images', urls: c.paths ? c.paths.map(fileUrl) : c.images.map((b) => URL.createObjectURL(b)) };
     return { kind: 'flow', chunks: c.chunks };
   })();
   cache.set(doc.id, job);
@@ -35,7 +36,7 @@ export function loadDoc(doc) {
 export function releaseDocs() {
   for (const job of cache.values()) job.then((d) => {
     d.pdf?.destroy();
-    for (const u of Object.values(d.urls || {})) URL.revokeObjectURL(u);
+    for (const u of Object.values(d.urls || {})) if (String(u).startsWith('blob:')) URL.revokeObjectURL(u);
   }).catch(() => {});
   cache.clear();
 }

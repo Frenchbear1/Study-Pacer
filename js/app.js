@@ -3,6 +3,8 @@ import { importFiles, ACCEPT, labelOf } from './importers.js';
 import { Pacer, weightsFor, suggestTime, clock, human, timeOfDay, METHODS, methodCfg, DEFAULTS } from './pacer.js';
 import { Viewer, loadDoc } from './viewer.js';
 import { renderSlide } from './pptx.js';
+import { isDesktop, pickFolder, scanFolder, reveal, pathId } from './native.js';
+import { indexLocal, kindOf, extOf, baseName, addToCollection } from './importers.js';
 import { THEME_DEFAULTS, applyReadingTheme, openThemeBar, themeBarOpen, blurPx, BLUR_DEF } from './themes.js';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -19,6 +21,10 @@ const ICON = {
   pause: '<svg viewBox="0 0 24 24"><rect x="6.5" y="5" width="3.8" height="14" rx="1.2"/><rect x="13.7" y="5" width="3.8" height="14" rx="1.2"/></svg>',
   close: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>',
   grip: '<svg viewBox="0 0 24 24"><path d="M8 7h.01M8 12h.01M8 17h.01M16 7h.01M16 12h.01M16 17h.01" stroke-width="3.2"/></svg>',
+  folder: '<svg viewBox="0 0 24 24"><path d="M3.5 7.5A2 2 0 0 1 5.5 5.5h4l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2Z"/></svg>',
+  folderPlus: '<svg viewBox="0 0 24 24"><path d="M3.5 7.5A2 2 0 0 1 5.5 5.5h4l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2Z"/><path d="M12 11v5M9.5 13.5h5"/></svg>',
+  refresh: '<svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.4-5.7L20 8.5"/><path d="M20 3.5v5h-5"/></svg>',
+  chev: '<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>',
   trash: '<svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13"/></svg>',
   pen: '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16Z"/></svg>',
   book: '<svg viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5Z"/><path d="M4 20.5A2.5 2.5 0 0 1 6.5 18H20v3H6.5"/></svg>',
@@ -216,23 +222,81 @@ async function keepAwake(on) {
 let docs = [];
 const selected = new Set();
 const docById = (id) => docs.find((d) => d.id === id);
-const unitWord = (d, n = 2) => (d.kind === 'slides' ? (n === 1 ? 'slide' : 'slides') : n === 1 ? 'page' : 'pages');
+const unitWord = (d, n = 2) => (d.kind === 'slides' ? (n === 1 ? 'slide' : 'slides') : d.kind === 'images' && (d.collection || d.local) ? (n === 1 ? 'photo' : 'photos') : n === 1 ? 'page' : 'pages');
 const readCount = (d) => (d.read || []).length;
 
 async function loadLibrary() {
   docs = await store.allDocs();
   renderLibrary();
 }
-function sortedDocs() {
+function sortedDocs(list = docs) {
   const s = prefs.sort;
-  const list = [...docs];
-  if (s === 'name') list.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-  else if (s === 'progress') list.sort((a, b) => readCount(b) / b.units - readCount(a) / a.units || (b.opened || b.added) - (a.opened || a.added));
-  else list.sort((a, b) => (b.opened || b.added) - (a.opened || a.added));
+  list = [...list];
+  const nat = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true });
+  if (s === 'name') list.sort(nat);
+  else if (s === 'progress') list.sort((a, b) => readCount(b) / (b.units || 1) - readCount(a) / (a.units || 1) || nat(a, b));
+  else list.sort((a, b) => (b.opened || b.added) - (a.opened || a.added) || nat(a, b));
   return list;
 }
-function estimateFor(d) { return suggestTime(d.words.map((w) => ({ words: w, kind: d.kind })), speed); }
+// the order to read things in: folder by folder, then by name (Lesson 2 before Lesson 10)
+function readingOrder(ids) {
+  const key = (d) => (d.local ? `${folderLabel(d.dir[0])}/${d.rel}` : `\uffff${d.name}`);
+  return ids.map(docById).filter(Boolean).sort((a, b) => key(a).localeCompare(key(b), undefined, { numeric: true })).map((d) => d.id);
+}
+function estimateFor(d) { return d.words?.length ? suggestTime(d.words.map((w) => ({ words: w, kind: d.kind })), speed) : 0; }
+
+// ---- folders: where you are, and what's in it ----
+let cwd = (() => { try { return JSON.parse(sessionStorage.getItem('sp:cwd') || '[]'); } catch { return []; } })();
+const setCwd = (c) => { cwd = c; try { sessionStorage.setItem('sp:cwd', JSON.stringify(c)); } catch {} };
+const sameDir = (a = [], b = []) => a.length === b.length && a.every((x, i) => x === b[i]);
+const under = (dir = [], base) => base.every((x, i) => dir[i] === x);
+// the first part of a folder document's dir is the attached folder's full path; show its own name
+function folderLabel(seg) { const f = folders.find((x) => x.path === seg); return f ? f.name : seg; }
+function folderTiles(base) {
+  const map = new Map();
+  for (const d of docs) {
+    const dir = d.dir || [];
+    if (dir.length <= base.length || !under(dir, base)) continue;
+    const seg = dir[base.length];
+    let t = map.get(seg);
+    if (!t) { t = { seg, path: [...base, seg], docs: 0, sub: new Set(), thumbs: [], units: 0, read: 0 }; map.set(seg, t); }
+    t.docs++;
+    t.units += d.units || 0; t.read += readCount(d);
+    if (dir.length > base.length + 1) t.sub.add(dir[base.length + 1]);
+    if (d.thumb && t.thumbs.length < 3) t.thumbs.push(d.thumb);
+  }
+  // attached folders show at the top level even before anything in them is found
+  if (!base.length) for (const f of folders) if (!map.has(f.path)) map.set(f.path, { seg: f.path, path: [f.path], docs: 0, sub: new Set(), thumbs: [], units: 0, read: 0, missing: f.missing });
+  return [...map.values()].sort((a, b) => folderLabel(a.seg).localeCompare(folderLabel(b.seg), undefined, { numeric: true }));
+}
+const docsUnder = (base) => docs.filter((d) => under(d.dir || [], base) && (d.dir || []).length >= base.length);
+let tiles = [];
+function folderHtml(t, i) {
+  const ids = docsUnder(t.path).map((d) => d.id);
+  const all = ids.length && ids.every((id) => selected.has(id));
+  const pct = t.units ? Math.round((t.read / t.units) * 100) : 0;
+  const meta = t.missing ? 'Folder not found' : [t.docs ? plural(t.docs, 'document') : 'Empty', t.sub.size ? plural(t.sub.size, 'folder') : ''].filter(Boolean).join(' · ');
+  return `<div class="card folder${all ? ' sel' : ''}" role="listitem" data-tile="${i}" style="--i:${Math.min(i, 16)}" tabindex="0">
+    <div class="card-art folder-art">
+      <span class="f-back"></span>
+      <span class="f-pages">${(t.thumbs.length ? t.thumbs : [null, null]).slice(0, 3).map((th, k) => `<i style="--k:${k}">${th ? `<img src="${th}" alt="" draggable="false">` : ''}</i>`).join('')}</span>
+      <span class="f-front">${ICON.folder}</span>
+      ${pct ? `<span class="card-prog"><i style="width:${pct}%"></i></span>` : ''}
+    </div>
+    ${t.docs ? `<button class="card-check" data-check aria-label="Select everything in ${esc(folderLabel(t.seg))}">${ICON.check}</button>` : ''}
+    <button class="card-menu" data-fmenu aria-label="More for ${esc(folderLabel(t.seg))}">${ICON.dots}</button>
+    <div class="card-meta"><b>${esc(folderLabel(t.seg))}</b><small>${meta}${pct ? ` · ${pct}%` : ''}</small></div>
+  </div>`;
+}
 function cardHtml(d, i) {
+  if (d.pending || d.error) {
+    return `<div class="card pending${selected.has(d.id) ? ' sel' : ''}" role="listitem" data-id="${d.id}" style="--i:${Math.min(i, 16)}" tabindex="0">
+      <div class="card-art"><div class="pend-art${d.error ? ' err' : ''}"><b>${esc(labelOf(d))}</b></div><span class="card-badge ${d.kind}">${esc(labelOf(d))}</span></div>
+      <button class="card-check" data-check aria-label="Select ${esc(d.name)}">${ICON.check}</button>
+      <button class="card-menu" data-cmenu aria-label="More for ${esc(d.name)}">${ICON.dots}</button>
+      <div class="card-meta"><b>${esc(d.name)}</b><small>${d.error ? `Couldn’t read: ${esc(d.error)}` : 'Reading…'}</small></div>
+    </div>`;
+  }
   const pct = d.units ? Math.round((readCount(d) / d.units) * 100) : 0;
   const wide = (d.aspect || 0.77) > 1.05;
   let art;
@@ -249,19 +313,242 @@ function cardHtml(d, i) {
     <div class="card-meta"><b>${esc(d.name)}</b><small>${d.units} ${unitWord(d, d.units)} · ~${human(estimateFor(d))}${pct ? ` · ${pct}%` : ''}</small></div>
   </div>`;
 }
+let libIO = null;
 function renderLibrary() {
   const grid = $('#grid');
-  const list = sortedDocs();
-  $('#empty').hidden = list.length > 0;
-  $('#libHead').hidden = !list.length;
-  grid.innerHTML = list.map(cardHtml).join('');
+  // a folder that's gone (removed, or emptied) takes you back up
+  while (cwd.length && !docs.some((d) => under(d.dir || [], cwd)) && !(cwd.length === 1 && folders.some((f) => f.path === cwd[0]))) cwd = cwd.slice(0, -1);
+  setCwd(cwd);
+  tiles = folderTiles(cwd);
+  const here = sortedDocs(docs.filter((d) => sameDir(d.dir || [], cwd)));
+  const anything = docs.length > 0 || folders.length > 0;
+  $('#empty').hidden = anything;
+  $('#libHead').hidden = !anything;
+  grid.innerHTML = tiles.map(folderHtml).join('') + here.map((d, i) => cardHtml(d, i + tiles.length)).join('');
+  if (!tiles.length && !here.length && anything) grid.innerHTML = '<p class="muted grid-empty">Nothing in this folder yet.</p>';
   grid.classList.toggle('selecting', selected.size > 0);
   $$('#sortSeg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.sort === prefs.sort)));
-  // previews that need the document itself
-  for (const el of $$('[data-mini]', grid)) miniSlide(el);
-  for (const el of $$('[data-flow]', grid)) miniFlow(el);
+  renderCrumbs();
+  renderTree();
+  // previews that need the document itself, drawn as they scroll into view
+  libIO?.disconnect();
+  libIO = new IntersectionObserver((ents) => {
+    for (const e of ents) {
+      if (!e.isIntersecting) continue;
+      libIO.unobserve(e.target);
+      e.target.dataset.mini ? miniSlide(e.target) : miniFlow(e.target);
+    }
+  }, { rootMargin: '300px' });
+  $$('[data-mini], [data-flow]', grid).forEach((el) => libIO.observe(el));
   renderSelbar();
   renderHero();
+}
+function renderCrumbs() {
+  const c = $('#crumbs');
+  if (!cwd.length) { c.innerHTML = `<h2>${folders.length ? 'Library' : 'Your documents'}</h2>`; return; }
+  const parts = [`<button data-crumb="0">Library</button>`, ...cwd.map((seg, i) => (i === cwd.length - 1 ? `<h2>${esc(folderLabel(seg))}</h2>` : `<button data-crumb="${i + 1}">${esc(folderLabel(seg))}</button>`))];
+  c.innerHTML = parts.join(`<span class="crumb-sep">${ICON.chev}</span>`);
+}
+function goFolder(path, dir = 1) {
+  setCwd(path);
+  renderLibrary();
+  $('.lib-main').scrollTop = 0;
+  if (!reduced()) $('#grid').animate([{ opacity: 0, transform: `translateX(${dir * 18}px)` }, { opacity: 1, transform: 'none' }], { duration: 320, easing: 'cubic-bezier(0.2, 0.9, 0.3, 1)' });
+}
+// the folder tree beside the library on wide windows
+function renderTree() {
+  const tree = $('#tree');
+  const has = docs.some((d) => (d.dir || []).length) || folders.length;
+  document.body.classList.toggle('has-tree', !!has);
+  if (!has) { tree.innerHTML = ''; return; }
+  prefs.treeOpen ||= {};
+  const node = (base, depth) => folderTiles(base).map((t) => {
+    const key = t.path.join('\u0001');
+    const kids = t.sub.size > 0;
+    const open = prefs.treeOpen[key] ?? depth === 0;
+    const cur = sameDir(t.path, cwd), inside = !cur && under(cwd, t.path) && cwd.length > t.path.length;
+    return `<div class="tn"><div class="tn-row${cur ? ' cur' : ''}${inside ? ' in' : ''}" style="--d:${depth}">
+        ${kids ? `<button class="tn-tog${open ? ' open' : ''}" data-tog="${esc(key)}" aria-label="${open ? 'Collapse' : 'Expand'}">${ICON.chev}</button>` : '<span class="tn-tog"></span>'}
+        <button class="tn-go" data-go="${esc(key)}">${ICON.folder}<span>${esc(folderLabel(t.seg))}</span><small>${t.docs || ''}</small></button>
+      </div>${kids && open ? `<div class="tn-kids">${node(t.path, depth + 1)}</div>` : ''}</div>`;
+  }).join('');
+  const loose = docs.filter((d) => !(d.dir || []).length).length;
+  tree.innerHTML = `<div class="tn-row${!cwd.length ? ' cur' : ''}" style="--d:0"><span class="tn-tog"></span><button class="tn-go" data-go="">${ICON.book}<span>Library</span><small>${loose || ''}</small></button></div>${node([], 0)}
+    ${isDesktop ? `<button class="tn-add" data-act="addFolder">${ICON.folderPlus}<span>Add folder</span></button>` : ''}`;
+}
+$('#tree').addEventListener('click', (e) => {
+  const tog = e.target.closest('[data-tog]');
+  if (tog) { const k = tog.dataset.tog; prefs.treeOpen[k] = !tog.classList.contains('open'); savePrefs(); renderTree(); return; }
+  const go = e.target.closest('[data-go]');
+  if (go) { const path = go.dataset.go ? go.dataset.go.split('\u0001') : []; const dir = path.length >= cwd.length ? 1 : -1; if (path.length) prefs.treeOpen[go.dataset.go] = true; goFolder(path, dir); }
+});
+$('#crumbs').addEventListener('click', (e) => { const b = e.target.closest('[data-crumb]'); if (b) goFolder(cwd.slice(0, Number(b.dataset.crumb)), -1); });
+
+// ---- folders on the computer (Windows app) ----
+let folders = [];
+const indexing = { queue: [], busy: false, total: 0, done: 0, first: null };
+async function loadFolders() { folders = (await store.get('folders')) || []; }
+async function saveFolders() { await store.set('folders', folders); }
+async function addFolder() {
+  const path = await pickFolder().catch((e) => { toast(esc(String(e))); return null; });
+  if (!path) return;
+  if (folders.some((f) => f.path.toLowerCase() === path.toLowerCase())) { toast('That folder is already in your library'); goFolder([folders.find((f) => f.path.toLowerCase() === path.toLowerCase()).path]); return; }
+  // a folder inside one that's already attached is already covered
+  const parent = folders.find((f) => path.toLowerCase().startsWith(f.path.toLowerCase().replace(/[\\/]$/, '') + '\\'));
+  if (parent) { toast(`Already included in “${esc(parent.name)}”`); return; }
+  let name = path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || path;
+  if (folders.some((f) => f.name === name)) name = `${name} (${path.split(/[\\/]/).slice(-2, -1)[0] || folders.length + 1})`;
+  folders.push({ path, name, added: Date.now() });
+  await saveFolders();
+  store.persist();
+  await syncFolders({ only: path, announce: true });
+  goFolder([path], 1);
+}
+async function removeFolder(path) {
+  folders = folders.filter((f) => f.path !== path);
+  await saveFolders();
+  const gone = docs.filter((d) => d.root === path);
+  for (const d of gone) { await store.deleteDoc(d.id); selected.delete(d.id); }
+  docs = docs.filter((d) => d.root !== path);
+  const ses = await store.get('session');
+  if (ses && ses.units.some((u) => gone.some((d) => d.id === u.doc))) await store.del('session');
+  if (cwd[0] === path) setCwd([]);
+  renderLibrary();
+  toast('Folder removed from the library. Nothing was deleted from your computer.', { ms: 4000 });
+}
+// Compare each folder with what the library has: add new files, re-read changed ones, drop deleted ones.
+// Progress on a file is kept as long as it's still there (its id comes from its path).
+let syncing = null;
+function syncFolders(opts = {}) {
+  if (!isDesktop || !folders.length) return Promise.resolve();
+  if (syncing) return syncing;
+  syncing = (async () => {
+    let added = 0, changed = 0, removed = 0;
+    for (const f of folders) {
+      if (opts.only && f.path !== opts.only) continue;
+      let entries;
+      try { entries = await scanFolder(f.path); f.missing = false; } catch (e) { f.missing = true; continue; }
+      const rootName = f.path;
+      const want = new Map();
+      const imgs = new Map();
+      for (const e of entries) {
+        const kind = kindOf(e.rel);
+        if (!kind || kind === 'old') continue;
+        const segs = e.rel.split('/');
+        const file = segs.pop();
+        const dir = [rootName, ...segs];
+        if (kind === 'images') {
+          const k = dir.join('/');
+          let g = imgs.get(k);
+          if (!g) { g = { dir, files: [] }; imgs.set(k, g); }
+          g.files.push(e);
+          continue;
+        }
+        const id = pathId(e.path);
+        want.set(id, { id, local: true, root: f.path, path: e.path, rel: e.rel, dir, name: baseName(file), ext: extOf(file), kind, size: e.size, mtime: e.mtime });
+      }
+      // pictures in one folder read as one set, in name order (exported slides, scanned pages)
+      for (const g of imgs.values()) {
+        g.files.sort((a, b) => a.rel.localeCompare(b.rel, undefined, { numeric: true }));
+        const id = pathId(g.dir.join('/') + '|images');
+        const label = g.dir.length > 1 ? g.dir[g.dir.length - 1] : f.name;
+        want.set(id, { id, local: true, root: f.path, paths: g.files.map((x) => x.path), rel: g.dir.slice(1).join('/') + '/', dir: g.dir, name: g.files.length === 1 ? baseName(g.files[0].rel.split('/').pop()) : label, ext: extOf(g.files[0].rel), kind: 'images', size: g.files.reduce((s, x) => s + x.size, 0), mtime: Math.max(...g.files.map((x) => x.mtime)) + g.files.length });
+      }
+      const have = new Map(docs.filter((d) => d.root === f.path).map((d) => [d.id, d]));
+      for (const [id, w] of want) {
+        const old = have.get(id);
+        if (!old) {
+          const d = { ...w, added: w.mtime || Date.now(), pos: 0, read: [], pending: true, units: 0, words: [], heads: [] };
+          docs.push(d); await store.putDoc(d); queueIndex(d.id); added++;
+        } else if (old.size !== w.size || old.mtime !== w.mtime || (w.paths && w.paths.join('|') !== (old.paths || []).join('|'))) {
+          Object.assign(old, { ...w, name: old.customName ? old.name : w.name, pending: true, error: null });
+          await store.putDoc(old); queueIndex(old.id); changed++;
+        } else {
+          if (old.rel !== w.rel || !sameDir(old.dir, w.dir)) { Object.assign(old, { rel: w.rel, dir: w.dir }); await store.putDoc(old); }
+          if (old.pending) queueIndex(old.id);
+        }
+        have.delete(id);
+      }
+      for (const d of have.values()) { await store.deleteDoc(d.id); docs = docs.filter((x) => x !== d); selected.delete(d.id); removed++; }
+    }
+    await saveFolders();
+    renderLibrary();
+    const bits = [added && `${added} new`, changed && `${changed} updated`, removed && `${removed} removed`].filter(Boolean);
+    if (bits.length && (opts.announce || opts.quiet === false)) toast(`${ICON.folder} ${bits.join(' · ')}`, { ms: 2600 });
+    else if (!bits.length && opts.announce === 'refresh') toast('Everything’s up to date', { ms: 1800 });
+    syncing = null;
+  })().catch((e) => { console.error(e); syncing = null; });
+  return syncing;
+}
+function queueIndex(id, first = false) {
+  if (indexing.queue.includes(id)) { if (first) { indexing.queue.splice(indexing.queue.indexOf(id), 1); indexing.queue.unshift(id); } }
+  else { first ? indexing.queue.unshift(id) : indexing.queue.push(id); indexing.total++; }
+  runIndex();
+}
+async function runIndex() {
+  if (indexing.busy) return;
+  indexing.busy = true;
+  let lastPaint = 0;
+  while (indexing.queue.length) {
+    const id = indexing.queue.shift();
+    const d = docById(id);
+    renderStatus();
+    if (d?.pending) {
+      try {
+        const next = await indexLocal(d);
+        Object.assign(d, next);
+      } catch (e) { d.pending = false; d.error = e.message || 'unreadable'; }
+      await store.putDoc(d);
+      indexing.waiters?.get(id)?.forEach((r) => r());
+      indexing.waiters?.delete(id);
+    }
+    indexing.done++;
+    // refresh the cards now and then, not after every file
+    if (performance.now() - lastPaint > 700 || !indexing.queue.length) { lastPaint = performance.now(); if ($('#reader').hidden) updateCards(); }
+    await new Promise((r) => setTimeout(r, 0));
+  }
+  indexing.busy = false; indexing.total = 0; indexing.done = 0;
+  renderStatus();
+}
+function updateCards() {
+  // swap in finished cards without redrawing the whole grid (keeps your scroll and avoids flicker)
+  for (const el of $$('#grid .card.pending')) {
+    const d = docById(el.dataset.id);
+    if (!d || d.pending) continue;
+    const tmp = document.createElement('div');
+    tmp.innerHTML = cardHtml(d, 0);
+    const n = tmp.firstElementChild;
+    n.style.animation = 'none';
+    el.replaceWith(n);
+    n.querySelector('.card-art').animate?.([{ opacity: 0.4 }, { opacity: 1 }], { duration: 300 });
+    const m = n.querySelector('[data-mini], [data-flow]');
+    if (m) libIO?.observe(m);
+  }
+  // folder tiles' counts and previews
+  tiles = folderTiles(cwd);
+  $$('#grid .card.folder').forEach((el) => { const t = tiles[Number(el.dataset.tile)]; if (!t) return; const tmp = document.createElement('div'); tmp.innerHTML = folderHtml(t, Number(el.dataset.tile)); const n = tmp.firstElementChild; n.style.animation = 'none'; el.replaceWith(n); });
+  renderSelbar();
+}
+function renderStatus() {
+  const st = $('#libStatus');
+  const left = indexing.queue.length + (indexing.busy ? 1 : 0);
+  if (!indexing.busy || !indexing.total) { st.hidden = true; return; }
+  st.hidden = false;
+  const done = Math.min(indexing.total, indexing.done);
+  st.innerHTML = `<span class="spin"></span><span>Reading documents · ${done} of ${indexing.total}</span><i style="--p:${(done / indexing.total) * 100}%"></i>`;
+  void left;
+}
+// make sure documents are worked out before reading or pacing them
+async function ensureReady(ids) {
+  const wait = ids.map(docById).filter((d) => d?.pending);
+  if (!wait.length) return ids.filter((id) => !docById(id)?.error);
+  const t = toast(`Getting ${wait.length === 1 ? esc(wait[0].name) : plural(wait.length, 'document')} ready…`, { ms: 0, plain: true, id: 'ready' });
+  indexing.waiters ||= new Map();
+  await Promise.all(wait.map((d) => new Promise((res) => { const l = indexing.waiters.get(d.id) || []; l.push(res); indexing.waiters.set(d.id, l); queueIndex(d.id, true); })));
+  t.close();
+  const bad = ids.map(docById).filter((d) => d?.error);
+  if (bad.length) toast(`Couldn’t read ${esc(bad[0].name)}: ${esc(bad[0].error)}`, { ms: 5000 });
+  return ids.filter((id) => docById(id) && !docById(id).error);
 }
 async function miniSlide(el) {
   const d = docById(el.dataset.mini);
@@ -291,7 +578,7 @@ function renderSelbar() {
   bar.hidden = !ids.length;
   if (!ids.length) return;
   const ds = ids.map(docById);
-  const units = ds.reduce((a, d) => a + d.units, 0);
+  const units = ds.reduce((a, d) => a + (d.units || 0), 0);
   const est = ds.reduce((a, d) => a + estimateFor(d), 0);
   $('#selCount').textContent = ids.length === 1 ? ds[0].name : `${ids.length} documents`;
   $('#selInfo').textContent = `${units} pages · about ${human(est)}`;
@@ -327,15 +614,68 @@ async function renderHero() {
 const filePick = $('#filePick');
 filePick.accept = ACCEPT;
 filePick.onchange = () => { if (filePick.files.length) doImport([...filePick.files]); filePick.value = ''; };
+function askPhotos(n, first) {
+  return new Promise((res) => {
+    let done = false;
+    const finish = (v) => { if (done) return; done = true; res(v); };
+    const guess = baseName(first).replace(/[\s_-]*\(?\d+\)?$/, '').trim() || 'Photos';
+    const s = openSheet({
+      title: `${n} photos`,
+      body: `<div class="group"><button class="row pick-row on" data-as="one"><span class="pick-dot"></span><div class="rt"><b>One collection</b><small>Read them in order like pages, and add more photos to it later</small></div></button>
+        <div class="row" data-name-row><input class="field-in text" id="colName" value="${esc(guess)}" maxlength="120" placeholder="Collection name" aria-label="Collection name"></div>
+        <button class="row pick-row" data-as="each"><span class="pick-dot"></span><div class="rt"><b>Separate photos</b><small>Each photo is its own document</small></div></button></div>
+        ${collections().length ? `<div class="group-t">Or add them to a collection</div><div class="group">${collections().map((d) => `<button class="row pick-row" data-into="${d.id}"><span class="pick-dot"></span><div class="rt"><b>${esc(d.name)}</b><small>${plural(d.units, 'photo')}</small></div></button>`).join('')}</div>` : ''}`,
+      foot: '<span class="grow"></span><button class="btn primary" data-ok>Import</button>',
+      onClose: () => finish(null),
+    });
+    let choice = { as: 'one' };
+    s.body.addEventListener('click', (e) => {
+      const r = e.target.closest('.pick-row');
+      if (!r) return;
+      $$('.pick-row', s.body).forEach((x) => x.classList.toggle('on', x === r));
+      choice = r.dataset.into ? { into: r.dataset.into } : { as: r.dataset.as };
+      s.body.querySelector('[data-name-row]').hidden = choice.as !== 'one';
+    });
+    s.el.querySelector('[data-ok]').onclick = () => { if (choice.as === 'one') choice.name = $('#colName', s.el).value.trim() || guess; const v = choice; finish(v); s.close(); };
+  });
+}
+const collections = () => docs.filter((d) => d.kind === 'images' && !d.local && d.collection);
+async function addPhotos(d, files) {
+  const t = toast(`Adding to ${esc(d.name)}…`, { ms: 0, plain: true, id: 'addp' });
+  const { doc, added } = await addToCollection(d, files);
+  t.close();
+  Object.assign(d, doc);
+  renderLibrary();
+  toast(added ? `${ICON.check}Added ${plural(added, 'photo')} to ${esc(d.name)}` : 'No photos in what you picked', { ms: 2600 });
+}
+function pickPhotos(d) {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.multiple = true; inp.accept = 'image/*,.png,.jpg,.jpeg,.webp,.gif,.avif';
+  inp.onchange = () => { if (inp.files.length) addPhotos(d, [...inp.files]); };
+  inp.click();
+}
 async function doImport(files) {
   store.persist();
+  // several photos: one collection, separate photos, or into a collection you already have
+  let photos = {};
+  const imgs = files.filter((f) => kindOf(f.name) === 'images');
+  if (imgs.length > 1 || (imgs.length === 1 && collections().length)) {
+    photos = await askPhotos(imgs.length, imgs[0].name);
+    if (!photos) return;
+    if (photos.into) {
+      await addPhotos(docById(photos.into), imgs);
+      files = files.filter((f) => kindOf(f.name) !== 'images');
+      if (!files.length) return;
+      photos = {};
+    }
+  }
   const t = toast(`<span>Importing…</span> <span class="prog"><i></i></span>`, { ms: 0, plain: true, id: 'imp' });
   const bar = t.querySelector('.prog i');
   const lab = t.querySelector('span span') || t.firstElementChild.firstElementChild;
   const { docs: added, errors } = await importFiles(files, (i, p, name) => {
     bar.style.setProperty('--p', `${((i + p) / files.length) * 100}%`);
     lab.textContent = files.length > 1 ? `Reading ${i + 1} of ${files.length}` : `Reading ${name.length > 28 ? name.slice(0, 26) + '…' : name}`;
-  });
+  }, photos);
   t.close();
   docs.push(...added);
   added.forEach((d) => selected.add(d.id));
@@ -351,6 +691,8 @@ addEventListener('dragover', (e) => { if ([...(e.dataTransfer?.types || [])].inc
 addEventListener('drop', (e) => {
   if (!e.dataTransfer?.files?.length) return;
   e.preventDefault(); dragDepth = 0; $('#dropVeil').hidden = true;
+  const onto = docById(e.target.closest?.('.card')?.dataset.id);
+  if (onto && onto.kind === 'images' && !onto.local && reader.hidden) { addPhotos(onto, [...e.dataTransfer.files]); return; }
   if (!$('#reader').hidden) exitReader();
   doImport([...e.dataTransfer.files]);
 });
@@ -358,6 +700,15 @@ addEventListener('drop', (e) => {
 if ('launchQueue' in window) window.launchQueue.setConsumer(async (p) => { if (p.files?.length) doImport(await Promise.all(p.files.map((h) => h.getFile()))); });
 
 $('#grid').addEventListener('click', (e) => {
+  const tile = e.target.closest('.card.folder');
+  if (tile) {
+    const t = tiles[Number(tile.dataset.tile)];
+    if (!t) return;
+    if (e.target.closest('[data-fmenu]')) { folderMenu(e.target.closest('[data-fmenu]'), t); return; }
+    if (e.target.closest('[data-check]') || e.metaKey || e.ctrlKey || e.shiftKey) { toggleFolderSel(t, tile); return; }
+    goFolder(t.path, 1);
+    return;
+  }
   const card = e.target.closest('.card');
   if (!card) return;
   const id = card.dataset.id;
@@ -365,10 +716,10 @@ $('#grid').addEventListener('click', (e) => {
   if (e.target.closest('[data-check]') || e.metaKey || e.ctrlKey || e.shiftKey || (selected.size && matchMedia('(hover: none)').matches)) { toggleSel(id, card); return; }
   openFree([id], card);
 });
-$('#grid').addEventListener('keydown', (e) => { const c = e.target.closest('.card'); if (c && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); e.key === ' ' ? toggleSel(c.dataset.id, c) : openFree([c.dataset.id], c); } });
+$('#grid').addEventListener('keydown', (e) => { const f = e.target.closest('.card.folder'); if (f && e.key === 'Enter') { const t = tiles[Number(f.dataset.tile)]; if (t) goFolder(t.path, 1); return; } const c = e.target.closest('.card:not(.folder)'); if (c && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); e.key === ' ' ? toggleSel(c.dataset.id, c) : openFree([c.dataset.id], c); } });
 // long press selects (phones)
 let lp;
-$('#grid').addEventListener('pointerdown', (e) => { const c = e.target.closest('.card'); if (!c || e.pointerType === 'mouse') return; lp = setTimeout(() => { buzz(12); toggleSel(c.dataset.id, c); c.addEventListener('click', (ev) => { ev.stopPropagation(); }, { capture: true, once: true }); }, 480); });
+$('#grid').addEventListener('pointerdown', (e) => { const c = e.target.closest('.card:not(.folder)'); if (!c || e.pointerType === 'mouse') return; lp = setTimeout(() => { buzz(12); toggleSel(c.dataset.id, c); c.addEventListener('click', (ev) => { ev.stopPropagation(); }, { capture: true, once: true }); }, 480); });
 ['pointerup', 'pointercancel', 'pointermove'].forEach((t) => $('#grid').addEventListener(t, (e) => { if (t !== 'pointermove' || Math.abs(e.movementX) + Math.abs(e.movementY) > 3) clearTimeout(lp); }));
 function toggleSel(id, card) {
   selected.has(id) ? selected.delete(id) : selected.add(id);
@@ -380,15 +731,40 @@ function toggleSel(id, card) {
 function cardMenu(btn, id) {
   const d = docById(id);
   openMenu(btn, [
-    { label: 'Read', icon: 'book', run: () => openFree([id]) },
-    { label: 'Pace it', icon: 'timer', run: () => openSetup([id]) },
+    ...(d.error ? [{ label: 'Try again', icon: 'refresh', run: () => { d.error = null; d.pending = true; renderLibrary(); queueIndex(d.id, true); } }] : [
+      { label: 'Read', icon: 'book', run: () => openFree([id]) },
+      { label: 'Pace it', icon: 'timer', run: () => openSetup([id]) },
+    ]),
     '-',
     { label: 'Rename', icon: 'pen', run: () => renameDoc(d) },
+    ...(d.kind === 'images' && !d.local ? [{ label: d.collection ? 'Add photos…' : 'Add photos (make a collection)…', icon: 'plus', run: () => pickPhotos(d) }] : []),
+    ...(d.kind === 'images' && d.local ? [{ label: 'Add photos: drop them in its folder', icon: 'folder', run: () => reveal(d.paths[0]) }] : []),
+    ...(d.local && d.kind !== 'images' ? [{ label: 'Show in File Explorer', icon: 'folder', run: () => reveal(d.path) }] : []),
     ...(readCount(d) ? [{ label: 'Reset progress', icon: 'reset', run: async () => { d.read = []; d.pos = 0; await store.putDoc(d); renderLibrary(); } }] : []),
-    { label: 'Delete', icon: 'trash', danger: true, run: () => deleteDocs([id]) },
+    ...(d.local ? [] : [{ label: 'Delete', icon: 'trash', danger: true, run: () => deleteDocs([id]) }]),
+  ]);
+}
+function toggleFolderSel(t, tile) {
+  const ids = docsUnder(t.path).map((d) => d.id);
+  const all = ids.every((id) => selected.has(id));
+  ids.forEach((id) => (all ? selected.delete(id) : selected.add(id)));
+  tile.classList.toggle('sel', !all);
+  $('#grid').classList.toggle('selecting', selected.size > 0);
+  if (!all && !reduced()) tile.querySelector('.card-art').animate([{ transform: 'scale(1)' }, { transform: 'scale(0.95)' }, { transform: 'scale(1)' }], { duration: 320, easing: 'cubic-bezier(.2,.9,.3,1.3)' });
+  renderSelbar();
+}
+function folderMenu(btn, t) {
+  const ids = docsUnder(t.path).map((d) => d.id);
+  const top = t.path.length === 1 && folders.find((f) => f.path === t.path[0]);
+  const fsPath = top ? top.path : [t.path[0], ...t.path.slice(1)].join('\\');
+  openMenu(btn, [
+    ...(ids.length ? [{ label: 'Read all', icon: 'book', run: () => openFree(readingOrder(ids)) }, { label: 'Pace all', icon: 'timer', run: () => openSetup(readingOrder(ids)) }, '-'] : []),
+    ...(isDesktop && folders.some((f) => f.path === t.path[0]) ? [{ label: 'Show in File Explorer', icon: 'folder', run: () => reveal(fsPath) }, { label: 'Check for changes', icon: 'refresh', run: () => syncFolders({ only: t.path[0], announce: 'refresh' }) }] : []),
+    ...(top ? ['-', { label: 'Remove from library', icon: 'close', danger: true, run: () => removeFolder(top.path) }] : []),
   ]);
 }
 function renameDoc(d) {
+  d.customName = true;
   const s = openSheet({ title: 'Rename', body: `<div class="group"><div class="row"><input class="field-in text" id="rn" value="${esc(d.name)}" maxlength="140"></div></div>`, foot: '<span class="grow"></span><button class="btn primary" data-save>Save</button>' });
   const inp = $('#rn', s.el); setTimeout(() => { inp.focus(); inp.select(); }, 300);
   const save = async () => { const v = inp.value.trim(); if (v) { d.name = v; await store.putDoc(d); renderLibrary(); } s.close(); };
@@ -433,8 +809,10 @@ function unitsFor(cfgDocs) {
   }
   return units;
 }
-function openSetup(ids, { fromReader = null } = {}) {
+async function openSetup(ids, { fromReader = null } = {}) {
   closeMenu();
+  ids = await ensureReady(ids);
+  if (!ids.length) return;
   const last = prefs.setup || {};
   const st = {
     docs: ids.map(docById).filter(Boolean).map((d) => {
@@ -634,6 +1012,7 @@ const reader = $('#reader');
 Pacer.restore = (ses) => { const p = new Pacer(ses.units, ses.pacer.cfg, ses.pacer.s); return p; };
 
 async function openFree(ids, fromCard) {
+  ids = await ensureReady(ids);
   const ds = ids.map(docById).filter(Boolean);
   if (!ds.length) return;
   const units = [];
@@ -1192,6 +1571,11 @@ function openSettings() {
       <div class="row"><div class="rt"><b>Keep the screen on</b><small>While a session is running</small></div>${sw('wake', prefs.wake)}</div>
       <div class="row"><div class="rt"><b>Compact pacer bar</b></div>${sw('hudCompact', prefs.hudCompact)}</div>
     </div>
+    ${isDesktop ? `<div class="group-t">Folders</div>
+    <div class="group">${folders.map((f) => `<div class="row"><div class="rt"><b>${esc(f.name)}</b><small>${esc(f.path)}${f.missing ? ' · not found' : ` · ${plural(docs.filter((d) => d.root === f.path).length, 'document')}`}</small></div><button class="icon-btn" data-fx="show" data-p="${esc(f.path)}" aria-label="Show in File Explorer">${ICON.folder}</button><button class="icon-btn" data-fx="rm" data-p="${esc(f.path)}" aria-label="Remove from library">${ICON.close}</button></div>`).join('')}
+      <div class="row"><div class="rt"><b>Add a folder</b><small>Documents are read straight from it, subfolders and all. Changes show up when you come back to the app.</small></div><button class="btn" data-x="addFolder">Add</button></div>
+      ${folders.length ? '<div class="row"><div class="rt"><b>Check for changes now</b></div><button class="btn" data-x="refresh">Check</button></div>' : ''}
+    </div>` : ''}
     <div class="group-t">Look</div>
     <div class="group"><div class="row"><div class="rt"><b>Theme, paper and glass</b><small>Colours, page textures, see-through and blur</small></div><button class="btn" data-x="themes">Open</button></div></div>
     <div class="group-t">Your data</div>
@@ -1216,11 +1600,15 @@ function openSettings() {
   s.body.addEventListener('click', async (e) => {
     const b = e.target.closest('button');
     if (!b) return;
+    if (b.dataset.fx === 'show') { reveal(b.dataset.p); return; }
+    if (b.dataset.fx === 'rm') { await removeFolder(b.dataset.p); draw(); return; }
+    if (b.dataset.x === 'addFolder') { s.close(true); addFolder(); return; }
+    if (b.dataset.x === 'refresh') { syncFolders({ announce: 'refresh' }); return; }
     if (b.dataset.set) { const v = b.dataset.v; prefs[b.dataset.set] = isNaN(Number(v)) ? v : Number(v); apply(b.dataset.set); draw(); }
     else if (b.dataset.x === 'themes') { s.close(true); openThemes(); }
     else if (b.dataset.x === 'forget') { speed = { wpm: null, slide: null }; await store.del('speed'); draw(); }
     else if (b.dataset.x === 'wipe') {
-      if (b.dataset.sure) { for (const d of docs) await store.deleteDoc(d.id); await store.del('session'); await store.del('history'); await store.del('speed'); docs = []; selected.clear(); s.close(); if (!reader.hidden) exitReader(); renderLibrary(); toast('Everything removed'); }
+      if (b.dataset.sure) { for (const d of docs) await store.deleteDoc(d.id); await store.del('session'); await store.del('history'); await store.del('speed'); await store.del('folders'); folders = []; docs = []; selected.clear(); s.close(); if (!reader.hidden) exitReader(); renderLibrary(); toast('Everything removed'); }
       else { b.dataset.sure = 1; b.textContent = 'Tap again to remove'; }
     }
   });
@@ -1238,10 +1626,11 @@ document.addEventListener('click', (e) => {
   const a = b.dataset.act;
   const acts = {
     import: () => filePick.click(), themes: openThemes, settings: openSettings,
-    selectAll: () => { const all = docs.every((d) => selected.has(d.id)); docs.forEach((d) => (all ? selected.delete(d.id) : selected.add(d.id))); renderLibrary(); },
+    selectAll: () => { const pool = docsUnder(cwd); const all = pool.every((d) => selected.has(d.id)); pool.forEach((d) => (all ? selected.delete(d.id) : selected.add(d.id))); renderLibrary(); },
+    addFolder, refresh: () => syncFolders({ announce: 'refresh' }),
     clearSel: () => { selected.clear(); renderLibrary(); },
-    readSel: () => openFree(sortedDocs().filter((d) => selected.has(d.id)).map((d) => d.id)),
-    paceSel: () => openSetup(sortedDocs().filter((d) => selected.has(d.id)).map((d) => d.id)),
+    readSel: () => openFree(readingOrder([...selected])),
+    paceSel: () => openSetup(readingOrder([...selected])),
     resume: resumeSession,
     endSaved: async () => { const ses = await store.get('session'); if (ses) { const p = Pacer.restore(ses); p.finish(); await learnSpeed(p); } await store.del('session'); renderHero(); toast('Session ended'); },
     exit: () => exitReader(), prev: prevPage, next: nextPage, pause: togglePause, ring: togglePause,
@@ -1304,7 +1693,15 @@ addEventListener('pagehide', () => { if (R.pacer) { R.pacer.tick(); saveSession(
 applyFlowPrefs();
 (async () => {
   await loadSpeed();
+  await loadFolders();
   await loadLibrary();
+  if (isDesktop) {
+    document.body.classList.add('desktop');
+    docs.filter((d) => d.pending).forEach((d) => queueIndex(d.id));
+    syncFolders();
+    let last = Date.now();
+    addEventListener('focus', () => { if (Date.now() - last > 15000) { last = Date.now(); syncFolders({ quiet: false }); } });
+  }
   // pick up an unfinished session straight away if the app was closed mid-read
   const ses = await store.get('session');
   if (ses && !ses.pacer?.s?.finished && Date.now() - (ses.pacer?.s?.last || 0) < 6 * 3600e3 && new URLSearchParams(location.search).get('resume') !== '0') {

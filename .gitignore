@@ -1,1 +1,5 @@
 .vercel
+node_modules
+www
+src-tauri/target
+src-tauri/gen

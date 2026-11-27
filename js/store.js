@@ -1,3 +1,4 @@
+import { readLocal } from './native.js';
 // Everything lives on this device in IndexedDB: the original files, what was worked out from them on import,
 // the reading position, and the session in progress (so a reload picks up exactly where you were).
 const DB = 'study-pacer';
@@ -48,7 +49,14 @@ export const store = {
       t.oncomplete = res; t.onerror = () => rej(t.error);
     });
   },
-  getFile: (id) => tx('files', 'readonly', (s) => req(s.get(id))),
+  // the original file: kept in the browser for imported documents, read from disk for folder documents
+  async getFile(id) {
+    const f = await tx('files', 'readonly', (s) => req(s.get(id)));
+    if (f) return f;
+    const d = await this.getDoc(id);
+    if (d?.path) return readLocal(d.path);
+    return null;
+  },
   putFile: (id, blob) => tx('files', 'readwrite', (s) => req(s.put(blob, id))),
   getContent: (id) => tx('content', 'readonly', (s) => req(s.get(id))),
   putContent: (id, c) => tx('content', 'readwrite', (s) => req(s.put(c, id))),

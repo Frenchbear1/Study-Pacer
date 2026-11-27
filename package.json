@@ -1,0 +1,12 @@
+{
+  "name": "study-pacer",
+  "private": true,
+  "description": "Study Pacer: web app plus the Windows app (Tauri)",
+  "scripts": {
+    "build": "node scripts/build-www.mjs",
+    "windows": "tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.6"
+  }
+}

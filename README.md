@@ -19,6 +19,21 @@ Import PDFs, PowerPoints, Word documents, web pages, EPUBs, Markdown, text files
 - **Reader:** page-by-page with Slide/Stack/Fade turns and swipe-to-turn that follows your finger, or continuous scroll; fit page or width; zoom; flag pages; a page grid overview; session stats with a time-per-page chart and log.
 - Pauses automatically when you leave, keeps the screen awake during a session, resumes an unfinished session after a reload, and works offline as an installable app.
 
+## Windows app
+
+A lightweight Windows version (a few MB, using the WebView2 engine built into Windows) that reads your documents straight from folders on your computer. Nothing is copied:
+
+- **Add folder** attaches any folder. Its subfolders become folders in the app, with a folder tree on the left, folder tiles and a breadcrumb.
+- New, changed and deleted files are picked up when you come back to the app (or with the refresh button). Your progress on a file is kept as long as it's still there.
+- Photos in the same folder read as one collection, in name order. To add photos, drop them into that folder.
+- Select a folder to read or pace everything in it, in folder order.
+
+Download it from the **Windows app** release on GitHub: `StudyPacer.exe` runs without installing; `StudyPacer-Setup.exe` installs it. It's rebuilt automatically whenever the app changes.
+
+## Photo collections
+
+Importing several photos asks whether they should be one collection (named, read in order like pages), separate photos, or added to a collection you already have. Add more any time from a collection's menu (**Add photos…**) or by dropping photos onto its card.
+
 ## Keys
 
 `←/→` pages · `Space` scrolls then turns · `P` pause · `B` break now · `F` flag · `G` all pages · `S` stats · `T` theme · `V` layout · `+/−` zoom · `H` hide bars · `Esc` back

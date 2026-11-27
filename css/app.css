@@ -728,3 +728,10 @@ body.desktop small .desk-only { display: inline !important; }
 .pick-dot { flex: none; width: 22px; height: 22px; border-radius: 50%; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--ink) 25%, transparent); transition: box-shadow 0.2s, background 0.2s; }
 .pick-row.on .pick-dot { background: var(--accent); box-shadow: inset 0 0 0 6px var(--accent), inset 0 0 0 11px #fff; }
 .pick-row.on .rt b { color: var(--accent); }
+/* theme panel: as short as it can be */
+.tbar-body { padding-top: 4px; padding-bottom: 2px; }
+.tbar-row { padding-top: 2px; padding-bottom: 2px; }
+.tbar-note { margin: 0; padding-bottom: 6px; line-height: 1.35; }
+.tbar-sliders { padding-top: 6px; padding-bottom: 4px; }
+.tbar-credit { margin-top: 4px; margin-bottom: 4px; }
+.tbar-foot { padding: 6px 10px max(6px, env(safe-area-inset-bottom)) 10px; }

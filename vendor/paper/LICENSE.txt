@@ -1,0 +1,17 @@
+Paper textures in this folder are adapted from Subtle Patterns (https://www.toptal.com/designers/subtlepatterns/),
+originally collected at github.com/subtlepatterns/SubtlePatterns, by Atle Mo and the original pattern authors.
+
+Licensed under Creative Commons Attribution-ShareAlike 3.0 Unported (https://creativecommons.org/licenses/by-sa/3.0/).
+Changes: converted to greyscale and evened out around mid-grey so they can be blended over any page colour.
+These adapted textures are shared under the same license.
+
+  fine.webp      <- paper_fibers.png
+  book.webp      <- extra_clean_paper.png
+  laid.webp      <- paper.png
+  rice.webp      <- ricepaper2.png
+  handmade.webp  <- lightpaperfibers.png
+  recycled.webp  <- exclusive_paper.png
+  natural.webp   <- natural_paper.png
+  linen.webp     <- low_contrast_linen.png
+  felt.webp      <- felt.png
+  card.webp      <- black_paper.png

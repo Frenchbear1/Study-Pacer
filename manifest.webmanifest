@@ -1,12 +1,12 @@
 {
   "name": "Study Pacer",
-  "short_name": "Pacer",
-  "id": "/",
-  "start_url": "/",
-  "scope": "/",
+  "short_name": "Study Pacer",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
-  "background_color": "#f9f9fb",
-  "theme_color": "#007aff",
+  "background_color": "#f5f4f1",
+  "theme_color": "#f5f4f1",
   "icons": [
     {
       "src": "icons/icon-192x192.png",
@@ -29,6 +29,37 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    }
+  ],
+  "description": "Read PDFs, slides and notes in one themed reader that paces you through them.",
+  "orientation": "any",
+  "file_handlers": [
+    {
+      "action": "./",
+      "accept": {
+        "application/pdf": [
+          ".pdf"
+        ],
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation": [
+          ".pptx"
+        ],
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [
+          ".docx"
+        ],
+        "text/html": [
+          ".html",
+          ".htm"
+        ],
+        "application/epub+zip": [
+          ".epub"
+        ],
+        "text/markdown": [
+          ".md"
+        ],
+        "text/plain": [
+          ".txt"
+        ]
+      }
     }
   ]
 }

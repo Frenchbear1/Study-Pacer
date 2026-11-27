@@ -1,14 +1,32 @@
 # Study Pacer
 
-A focused, single-page pacing tool to keep study sessions on track and on time.
+Read your study material in one calm, themed reader that paces you through it.
 
-**Features**
-- Total-time or time-per-slide pacing modes
-- Pacing profiles: even, front-loaded, back-loaded, or custom weights
-- Break reminders by slide count or time
-- Live time slider with quick +/- adjustments
-- Finish time and predicted finish time display
-- Session summary stats (total, average, fastest, slowest)
-- Session log viewer
-- Dark mode toggle
+Import PDFs, PowerPoints, Word documents, web pages, EPUBs, Markdown, text files or images, pick how much time you have, and read. Study Pacer tracks every page and slide across all the documents in your session, tells you how many are left, keeps each page on time, and interrupts you for breaks using the study method you choose.
 
+## What it does
+
+- **Reads everything in-app:** PDF (pdf.js), PowerPoint .pptx (drawn from the file's own layout: themes, masters, bullets, tables, pictures, speaker notes), Word .docx, HTML/web pages (cleaned to reader view), EPUB, Markdown, plain text and image sets. Text documents are cut into printed-page-sized pages.
+- **Paces across several documents at once:** one session can hold many documents, each with its own page range, in any order (drag to reorder).
+- **Three ways to set time:** a total ("90 minutes"), a pace ("45 s a page"), a deadline ("done by 4:30"), or open-ended.
+- **Smart pacing:** pages with more text get more time and title slides get less (strength adjustable), or use even, front-loaded or back-loaded pacing. Time you gain or lose is shared over the remaining pages, carried to the next page (the original Study Pacer behaviour), or kept fixed.
+- **Study methods as editable presets:** Pomodoro (25/5, long break every 4), Long Pomodoro (50/10), 52/17, Ultradian 90/20, Flowtime (break when you want; you earn a fifth of your focus time), Page sprints, or your own custom rhythm.
+- **Interruptions:** when a focus block ends you get a full-screen animation and can take the break, ask for +2/+5/+10/+15/+25 minutes, finish the page first, or skip the break. A quiet heads-up comes a minute beforehand.
+- **Breaks:** a breathing countdown, a rest tip and a **recall check** (write down what you remember from the pages you just read; it's saved with the session). The clock waits for you to say you're ready.
+- **Pacer bar:** a page ring (with an outer focus-block arc), time left, pages to go, predicted finish and whether you're ahead or behind, based on your actual pace.
+- **Learns your pace:** your words-per-minute and seconds-per-slide feed future time suggestions, and you get today/week totals and a streak.
+- **Findly's reading themes:** the same colour themes, real paper textures, page tinting (PDFs, slides and images take on the theme; dark themes turn pages dark), and per-surface glass transparency and blur.
+- **Reader:** page-by-page with Slide/Stack/Fade turns and swipe-to-turn that follows your finger, or continuous scroll; fit page or width; zoom; flag pages; a page grid overview; session stats with a time-per-page chart and log.
+- Pauses automatically when you leave, keeps the screen awake during a session, resumes an unfinished session after a reload, and works offline as an installable app.
+
+## Keys
+
+`←/→` pages · `Space` scrolls then turns · `P` pause · `B` break now · `F` flag · `G` all pages · `S` stats · `T` theme · `V` layout · `+/−` zoom · `H` hide bars · `Esc` back
+
+## Running it
+
+It's a static site with no build step: serve the folder (GitHub Pages, Vercel, or `python3 -m http.server`) and open `index.html`. Everything is stored on your device in IndexedDB.
+
+## Credits
+
+pdf.js (Apache 2.0), JSZip (MIT), mammoth.js (BSD-2). Paper textures adapted from Subtle Patterns (CC BY-SA 3.0, see `vendor/paper/LICENSE.txt`). Themes and glass system shared with Findly.

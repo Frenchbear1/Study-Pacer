@@ -1,5 +1,5 @@
 // Offline: the app's files come from the cache and are refreshed in the background.
-const CACHE = 'study-pacer-v2';
+const CACHE = 'study-pacer-v3';
 const SHELL = [
   './', 'index.html', 'css/app.css', 'js/app.js', 'js/pacer.js', 'js/viewer.js', 'js/importers.js', 'js/pptx.js', 'js/store.js', 'js/themes.js',
   'vendor/pdf.min.js', 'vendor/pdf.worker.min.js', 'vendor/jszip.min.js', 'vendor/mammoth.browser.min.js',

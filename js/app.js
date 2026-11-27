@@ -340,7 +340,7 @@ async function doImport(files) {
   docs.push(...added);
   added.forEach((d) => selected.add(d.id));
   renderLibrary();
-  if (added.length) toast(`${ICON.check} Added ${added.length === 1 ? `“${esc(added[0].name)}”` : plural(added.length, 'document')}`, { actions: [{ label: 'Pace it', primary: true, run: () => openSetup([...added.map((d) => d.id)]) }], ms: 5000 });
+  if (added.length) toast(`${ICON.check}Added ${added.length === 1 ? esc(added[0].name) : plural(added.length, 'document')}`, { actions: [{ label: 'Pace it', primary: true, run: () => openSetup([...added.map((d) => d.id)]) }], ms: 5000 });
   for (const e of errors) toast(esc(e), { ms: 6000 });
 }
 // drag and drop, anywhere

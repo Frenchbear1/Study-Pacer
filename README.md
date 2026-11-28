@@ -19,6 +19,14 @@ Import PDFs, PowerPoints, Word documents, web pages, EPUBs, Markdown, text files
 - **Reader:** page-by-page with Slide/Stack/Fade turns and swipe-to-turn that follows your finger, or continuous scroll; fit page or width; zoom; flag pages; a page grid overview; session stats with a time-per-page chart and log.
 - Pauses automatically when you leave, keeps the screen awake during a session, resumes an unfinished session after a reload, and works offline as an installable app.
 
+## Search
+
+Every document is indexed by page as it comes in (headings and captions marked), and searched with the same engine as Findly: **Any word**, **All words**, **Exact phrase**, **Near** (within N words) and **Boolean** (AND, OR, NOT and parentheses), with match case, whole words, and **Look in** Anywhere / Headings / Captions / Body text. Search everything, the folder you're in, the document you're reading or the whole session. Results show each matching page with a highlighted snippet; opening one highlights the matches right on the page (PDFs included), and a hit bar steps between the matching pages. `Ctrl F` or `/` opens it.
+
+## Changing a session
+
+**⋯ → Edit session** (or `E`) opens the setup with the session's current settings: change the time, the study method and its numbers, the pacing, breaks, page ranges, or add and remove documents. Pages already read, time so far and where you are all carry over.
+
 ## Windows app
 
 A lightweight Windows version (a few MB, using the WebView2 engine built into Windows) that reads your documents straight from folders on your computer. Nothing is copied:
@@ -36,7 +44,7 @@ Importing several photos asks whether they should be one collection (named, read
 
 ## Keys
 
-`←/→` pages · `Space` scrolls then turns · `P` pause · `B` break now · `F` flag · `G` all pages · `S` stats · `T` theme · `V` layout · `+/−` zoom · `H` hide bars · `Esc` back
+`Ctrl F` or `/` search · `E` edit session · `←/→` pages · `Space` scrolls then turns · `P` pause · `B` break now · `F` flag · `G` all pages · `S` stats · `T` theme · `V` layout · `+/−` zoom · `H` hide bars · `Esc` back
 
 ## Running it
 

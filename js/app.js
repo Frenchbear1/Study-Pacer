@@ -1,10 +1,11 @@
 import { store } from './store.js';
 import { importFiles, ACCEPT, labelOf } from './importers.js';
-import { Pacer, weightsFor, suggestTime, clock, human, timeOfDay, METHODS, methodCfg, DEFAULTS } from './pacer.js';
+import { Pacer, weightsFor, suggestTime, clock, human, timeOfDay, METHODS, methodCfg, DEFAULTS, carryOver } from './pacer.js';
 import { Viewer, loadDoc } from './viewer.js';
 import { renderSlide } from './pptx.js';
 import { isDesktop, pickFolder, scanFolder, reveal, pathId } from './native.js';
-import { indexLocal, kindOf, extOf, baseName, addToCollection } from './importers.js';
+import { indexLocal, kindOf, extOf, baseName, addToCollection, buildText, textVersion } from './importers.js';
+import { compile, MODES, WHERE } from './search.js';
 import { THEME_DEFAULTS, applyReadingTheme, openThemeBar, themeBarOpen, blurPx, BLUR_DEF } from './themes.js';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -39,6 +40,9 @@ const ICON = {
   stop: '<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5"/></svg>',
   notes: '<svg viewBox="0 0 24 24"><path d="M5 4h14v12l-4 4H5Z"/><path d="M15 20v-4h4M8.5 9h7M8.5 13h4"/></svg>',
   minus: '<svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg>',
+  search: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg>',
+  down: '<svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>',
+  up: '<svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg>',
 };
 
 // ================= preferences =================
@@ -49,6 +53,7 @@ const PREF_DEFAULTS = {
   fontSize: 18, flowW: 720, flowFont: 'serif', lineH: 1.65,
   autoPause: true, sound: true, haptics: true, wake: true, nudge: true, hudCompact: false,
   sort: 'recent', setup: null, customMethod: null,
+  sMode: 'all', matchCase: false, wholeWord: false, near: 8, where: 'any', sScope: 'all',
 };
 let prefs;
 try { prefs = { ...PREF_DEFAULTS, ...JSON.parse(localStorage.getItem(PKEY) || '{}') }; } catch { prefs = { ...PREF_DEFAULTS }; }
@@ -497,6 +502,7 @@ async function runIndex() {
       try {
         const next = await indexLocal(d);
         Object.assign(d, next);
+        dropTexts([d.id]);
       } catch (e) { d.pending = false; d.error = e.message || 'unreadable'; }
       await store.putDoc(d);
       indexing.waiters?.get(id)?.forEach((r) => r());
@@ -774,6 +780,7 @@ function renameDoc(d) {
 async function deleteDocs(ids) {
   const gone = ids.map(docById).filter(Boolean);
   for (const id of ids) { await store.deleteDoc(id); selected.delete(id); }
+  dropTexts(ids);
   docs = docs.filter((d) => !ids.includes(d.id));
   // a saved session that used them can't continue
   const ses = await store.get('session');
@@ -809,7 +816,7 @@ function unitsFor(cfgDocs) {
   }
   return units;
 }
-async function openSetup(ids, { fromReader = null } = {}) {
+async function openSetup(ids, { fromReader = null, edit = null } = {}) {
   closeMenu();
   ids = await ensureReady(ids);
   if (!ids.length) return;
@@ -831,13 +838,26 @@ async function openSetup(ids, { fromReader = null } = {}) {
   st.total = Math.max(5 * 60, Math.round(suggest() / 300) * 300 || 1800);
   const d0 = new Date(Date.now() + st.total * 1000 + 15 * 60000); d0.setMinutes(Math.ceil(d0.getMinutes() / 5) * 5, 0, 0);
   st.by = d0.getTime();
+  // editing a running session: start from exactly what it's set to
+  if (edit) {
+    const c = edit.cfg;
+    st.docs = [];
+    for (const u of edit.units) {
+      const q = st.docs.find((x) => x.id === u.doc);
+      if (!q) st.docs.push({ id: u.doc, from: u.i, to: u.i }); else { q.from = Math.min(q.from, u.i); q.to = Math.max(q.to, u.i); }
+    }
+    Object.assign(st, { mode: c.mode, per: c.per, profile: c.profile, strength: c.strength, rebalance: c.rebalance, method: c.method || 'none', interrupt: c.interrupt, recall: c.recall, breakDocs: c.breakDocs });
+    st.m = c.flowtime || st.method === 'none' ? {} : c.breakUnit === 'pages' ? { pages: c.breakEvery, short: Math.round(c.breakLen / 60) } : c.breakEvery ? { focus: c.breakEvery, short: Math.round(c.breakLen / 60), long: c.longEvery ? Math.round(c.longLen / 60) : 0, every: c.longEvery || 4 } : {};
+    st.total = Math.round(c.total / 60) * 60;
+    if (c.by) st.by = c.by;
+  }
   const method = () => (st.method === 'custom' ? { id: 'custom', name: 'Custom', ...(prefs.customMethod || { focus: 30, short: 5, long: 15, every: 4 }) } : METHODS.find((m) => m.id === st.method) || METHODS[0]);
   const mvals = () => ({ ...method(), ...st.m });
 
-  const s = openSheet({ title: 'Pace it', wide: false, body: '<div id="su"></div>', foot: '<div class="grow" id="suSum"></div><button class="btn primary big" data-start>Start</button>' });
+  const s = openSheet({ title: edit ? 'Edit session' : 'Pace it', wide: false, body: '<div id="su"></div>', foot: `<div class="grow" id="suSum"></div><button class="btn primary big" data-start>${edit ? 'Save' : 'Start'}</button>` });
   const root = $('#su', s.el);
   const timeHtml = () => {
-    if (st.mode === 'total') return `<div class="big-time"><div class="stepper"><button data-tadj="-300" aria-label="5 minutes less">−</button></div><div class="readout"><b>${human(st.total).replace(' min', 'm').replace(' h', 'h')}</b><small>to read it all</small></div><div class="stepper"><button data-tadj="300" aria-label="5 minutes more">+</button></div></div>
+    if (st.mode === 'total') return `<div class="big-time"><div class="stepper"><button data-tadj="-300" aria-label="5 minutes less">−</button></div><div class="readout"><b>${human(st.total).replace(' min', 'm').replace(' h', 'h')}</b><small>${edit ? `for the whole session · ${human(edit.work)} so far` : 'to read it all'}</small></div><div class="stepper"><button data-tadj="300" aria-label="5 minutes more">+</button></div></div>
       <div class="chips">${[15, 30, 45, 60, 90, 120, 180].map((m) => `<button class="chip${st.total === m * 60 ? ' on' : ''}" data-tset="${m * 60}">${m < 60 ? `${m}m` : `${m / 60}h`}</button>`).join('')}<button class="chip accent" data-tset="${Math.round(suggest() / 60) * 60}">Suggested ~${human(suggest())}</button></div>`;
     if (st.mode === 'per') return `<div class="big-time"><div class="stepper"><button data-padj="-5">−</button></div><div class="readout"><b>${clock(st.per, { hours: false })}</b><small>average a page</small></div><div class="stepper"><button data-padj="5">+</button></div></div>
       <div class="chips">${[20, 30, 45, 60, 90, 120, 180, 300].map((v) => `<button class="chip${st.per === v ? ' on' : ''}" data-pset="${v}">${v < 60 ? `${v}s` : `${v / 60}m`}</button>`).join('')}</div>`;
@@ -878,7 +898,7 @@ async function openSetup(ids, { fromReader = null } = {}) {
         <span class="q-thumb">${d.thumb ? `<img src="${d.thumb}" alt="">` : esc(labelOf(d))}</span>
         <div class="q-text"><b>${esc(d.name)}</b><div class="q-range">${unitWord(d)} <input class="field-in" type="number" min="1" max="${d.units}" value="${q.from + 1}" data-from="${k}" inputmode="numeric"> to <input class="field-in" type="number" min="1" max="${d.units}" value="${q.to + 1}" data-to="${k}" inputmode="numeric"> of ${d.units}</div></div>
         ${st.docs.length > 1 ? `<button class="icon-btn" data-qdel="${k}" aria-label="Remove">${ICON.close}</button>` : ''}
-      </div>`; }).join('')}</div>
+      </div>`; }).join('')}<button class="row add-row" data-addq>${ICON.plus}<span>Add documents</span></button></div>
       <div class="group-t">Time</div>
       <div class="group"><div class="row" style="padding-bottom:0"><div class="seg wide" role="group">${[['total', 'Total time'], ['per', 'Per page'], ['by', 'Finish by'], ['open', 'Open']].map(([k, l]) => `<button data-mode="${k}" aria-pressed="${st.mode === k}">${l}</button>`).join('')}</div></div>${timeHtml()}</div>
       <div class="group-t">Study method</div>
@@ -911,11 +931,13 @@ async function openSetup(ids, { fromReader = null } = {}) {
     const u = units();
     const n = u.length;
     let tot = st.mode === 'total' ? st.total : st.mode === 'per' ? st.per * n : st.mode === 'by' ? (st.by - Date.now()) / 1000 : suggest();
+    if (edit && st.mode !== 'by') tot = Math.max(60, tot - edit.work);
     const p = new Pacer(u.length ? u : [{ doc: 'x', i: 0, words: 0 }], cfg());
     const brk = p.plannedBreaks(n, st.mode === 'by' ? tot : tot, st.docs.length);
     if (st.mode === 'by') tot = Math.max(60, tot - brk);
     const end = st.mode === 'by' ? st.by : Date.now() + (tot + brk) * 1000;
-    $('#suSum', s.el).innerHTML = n ? `<b>${n} pages · ${n ? clock(tot / n, { hours: false }) : '0'} a page</b><br>${st.mode === 'open' ? 'open-ended' : `done around ${timeOfDay(end)}`}${brk ? ` · ${human(brk)} of breaks` : ''}` : 'Nothing to read';
+    const left = edit ? u.filter((x) => !edit.done.has(`${x.doc}:${x.i}`)).length || n : n;
+    $('#suSum', s.el).innerHTML = n ? `<b>${edit ? `${left} of ${n} pages left` : `${n} pages`} · ${clock(tot / left, { hours: false })} a page</b><br>${st.mode === 'open' ? 'open-ended' : `done around ${timeOfDay(end)}`}${brk ? ` · ${human(brk)} of breaks` : ''}` : 'Nothing to read';
     s.el.querySelector('[data-start]').disabled = !n || (st.mode === 'by' && st.by - Date.now() < 120000);
   };
   const cfg = () => {
@@ -946,6 +968,7 @@ async function openSetup(ids, { fromReader = null } = {}) {
     else if (ds.profile) st.profile = ds.profile;
     else if (ds.reb) st.rebalance = ds.reb;
     else if (ds.qdel) st.docs.splice(Number(ds.qdel), 1);
+    else if (b.hasAttribute('data-addq')) { pickDocs(st.docs.map((q) => q.id), (add) => { for (const d of add) st.docs.push({ id: d.id, from: 0, to: d.units - 1 }); const y = s.body.scrollTop; render(); s.body.scrollTop = y; }); return; }
     else return;
     const y = s.body.scrollTop;
     render();
@@ -999,10 +1022,54 @@ async function openSetup(ids, { fromReader = null } = {}) {
     prefs.setup = { mode: st.mode, per: st.per, profile: st.profile, strength: st.strength, rebalance: st.rebalance, method: st.method, m: st.m, interrupt: st.interrupt, recall: st.recall, breakDocs: st.breakDocs };
     savePrefs();
     s.close();
+    if (edit) { edit.onSave(u, cfg()); return; }
     const pacer = new Pacer(u, cfg());
     startSession(u, pacer);
   };
   render();
+}
+
+// add documents from the library to a session
+function pickDocs(exclude, done) {
+  const pool = docs.filter((d) => !exclude.includes(d.id) && !d.pending && !d.error && d.units);
+  const order = readingOrder(pool.map((d) => d.id)).map(docById);
+  const where = (d) => (d.dir || []).map(folderLabel).join(' › ');
+  const s = openSheet({
+    title: 'Add documents',
+    body: order.length ? `<div class="group">${order.map((d) => `<button class="row pick-row multi" data-id="${d.id}"><span class="pick-dot"></span><div class="rt"><b>${esc(d.name)}</b><small>${esc([where(d), `${d.units} ${unitWord(d, d.units)}`].filter(Boolean).join(' · '))}</small></div></button>`).join('')}</div>` : '<p class="muted" style="margin:6px">Everything in your library is already in this session.</p>',
+    foot: '<span class="grow" id="pdCount"></span><button class="btn primary" data-ok disabled>Add</button>',
+  });
+  const picked = new Set();
+  s.body.onclick = (e) => {
+    const r = e.target.closest('[data-id]');
+    if (!r) return;
+    picked.has(r.dataset.id) ? picked.delete(r.dataset.id) : picked.add(r.dataset.id);
+    r.classList.toggle('on', picked.has(r.dataset.id));
+    s.el.querySelector('[data-ok]').disabled = !picked.size;
+    $('#pdCount', s.el).textContent = picked.size ? plural(picked.size, 'document') : '';
+  };
+  s.el.querySelector('[data-ok]').onclick = () => { s.close(); done(order.filter((d) => picked.has(d.id))); };
+}
+function editSession() {
+  const p = R.pacer;
+  if (!p) return;
+  p.tick();
+  const ids = [...new Set(p.units.map((u) => u.doc))];
+  const done = new Set(p.units.filter((_, j) => p.s.done[j]).map((u) => `${u.doc}:${u.i}`));
+  openSetup(ids, { edit: { cfg: { ...p.cfg, total: p.cfg.mode === 'total' ? p.s.budget + p.s.added : p.cfg.total }, units: p.units, work: p.s.work, done, onSave: applyEdit } });
+}
+async function applyEdit(units, cfg) {
+  const old = R.pacer;
+  if (!old) return;
+  old.tick();
+  const p = carryOver(old, new Pacer(units, cfg));
+  const flagged = new Set([...R.flags].map((k) => old.units[k]).filter(Boolean).map((u) => `${u.doc}:${u.i}`));
+  R.session.units = units;
+  await openReader(units, p, p.s.cur, null, { quiet: true });
+  units.forEach((u, k) => { if (flagged.has(`${u.doc}:${u.i}`)) { R.flags.add(k); R.viewer.setFlag(k, true); } });
+  renderTop();
+  saveSession();
+  toast(`${ICON.check}Session updated`, { ms: 1800 });
 }
 
 // ================= the reader =================
@@ -1050,9 +1117,9 @@ async function saveSession() {
   try { await store.set('session', R.session); } catch {}
 }
 
-async function openReader(units, pacer, start, fromEl) {
+async function openReader(units, pacer, start, fromEl, { quiet = false } = {}) {
   closeMenu();
-  R.units = units; R.pacer = pacer; R.flags = new Set();
+  R.units = units; R.pacer = pacer; R.flags = new Set(); R.search = null; $('#hitbar').hidden = true;
   R.docs = new Map(units.map((u) => [u.doc, docById(u.doc)]));
   R.k = start;
   $('#library').inert = true;
@@ -1060,7 +1127,7 @@ async function openReader(units, pacer, start, fromEl) {
   reader.classList.remove('immersive');
   reader.classList.toggle('paged-mode', prefs.view !== 'scroll');
   // zoom in from the card that was tapped
-  if (!reduced()) {
+  if (!reduced() && !quiet) {
     const r = fromEl?.getBoundingClientRect?.();
     if (r) {
       reader.style.transformOrigin = `${r.left + r.width / 2}px ${r.top + r.height / 2}px`;
@@ -1084,7 +1151,7 @@ async function openReader(units, pacer, start, fromEl) {
   loop();
   keepAwake(!!pacer);
   $('#stage').focus({ preventScroll: true });
-  history.pushState({ reader: 1 }, '');
+  if (!quiet) history.pushState({ reader: 1 }, '');
 }
 function exitReader(fromPop) {
   if (reader.hidden || R.exiting) return;
@@ -1093,6 +1160,7 @@ function exitReader(fromPop) {
   if (R.pacer && !R.pacer.s.finished) { R.pacer.tick(); saveSession(); }
   closeVeil(true);
   $('.nudge')?.remove();
+  R.search = null; $('#hitbar').hidden = true;
   const out = reader.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(0.97)' }], { duration: reduced() ? 1 : 240, easing: 'ease-in' });
   out.onfinish = () => { reader.hidden = true; R.exiting = false; R.viewer?.destroy(); R.viewer = null; $('#stage').innerHTML = ''; $('#hud').innerHTML = ''; };
   $('#library').inert = false;
@@ -1123,6 +1191,7 @@ function moved(k, dir, fromScroll) {
   if (d) { d.pos = u.i; d.opened = Date.now(); clearTimeout(R._dp); R._dp = setTimeout(() => store.putDoc(d), 600); }
   renderTop();
   renderHud();
+  if (R.search) paintHitbar();
   saveSession();
 }
 function markRead(u) {
@@ -1503,6 +1572,7 @@ function moreMenu(btn) {
     ...(p ? [
       { label: p.s.paused ? 'Resume' : 'Pause', icon: p.s.paused ? 'play' : 'pause', key: 'P', run: togglePause },
       { label: 'Take a break now', icon: 'coffee', key: 'B', run: () => { p.takeBreakNow(); showBreak(); } },
+      { label: 'Edit session…', icon: 'pen', key: 'E', run: editSession },
       { label: 'Add 5 minutes', icon: 'plus', run: () => addTime(300) },
       { label: 'Session stats', icon: 'chart', key: 'S', run: () => openStats() },
       '-',
@@ -1539,6 +1609,279 @@ function toggleFlag() {
   buzz(8);
   saveSession();
 }
+
+
+// ================= search =================
+// Every document's words are indexed by page when it's read in (headings and captions marked), and searched
+// in a worker with Findly's engine: Any word, All words, Exact phrase, Near and Boolean, with match case,
+// whole words, and where on the page to look.
+let worker = null;
+const searchWorker = () => { if (!worker) { worker = new Worker(new URL('./search-worker.js', import.meta.url), { type: 'module' }); worker.onmessage = onWorker; } return worker; };
+const SV = { qid: 0, last: null, open: false, timer: 0, expanded: new Set() };
+const sv = $('#search');
+const qIn = $('#q');
+// documents still waiting for their text index (imported before search existed)
+const textJob = { queue: [], busy: false };
+async function backfillTexts() {
+  const have = new Set(await store.textIds());
+  for (const d of docs) if (!have.has(d.id) && !d.pending && !d.error && d.units && !textJob.queue.includes(d.id)) textJob.queue.push(d.id);
+  if (textJob.busy) return;
+  textJob.busy = true;
+  while (textJob.queue.length) {
+    const d = docById(textJob.queue.shift());
+    if (!d || d.pending) continue;
+    try { await store.putText(d.id, await buildText(d)); } catch (e) { console.warn('index', d.name, e); }
+    if (SV.open) renderSearch();
+    await new Promise((r) => setTimeout(r, 30));
+  }
+  textJob.busy = false;
+  if (SV.open) renderSearch();
+}
+const dropTexts = (ids) => { try { worker?.postMessage({ t: 'drop', ids }); } catch {} };
+
+function scopeOptions() {
+  const o = [];
+  if (!reader.hidden) {
+    const ids = [...R.docs.keys()];
+    if (ids.length === 1) o.push(['doc', 'This document']);
+    else { o.push(['doc', 'This document']); o.push(['session', R.pacer ? 'This session' : 'These documents']); }
+  } else if (cwd.length) o.push(['folder', `In ${folderLabel(cwd[cwd.length - 1])}`]);
+  o.push(['all', 'Everything']);
+  return o;
+}
+function scopeIds() {
+  const ok = (d) => d && !d.pending && !d.error && d.units;
+  const sc = SV.scope;
+  if (sc === 'doc' && !reader.hidden) return [R.units[R.k].doc];
+  if (sc === 'session' && !reader.hidden) return [...R.docs.keys()];
+  if (sc === 'folder') return readingOrder(docsUnder(cwd).filter(ok).map((d) => d.id));
+  return readingOrder(docs.filter(ok).map((d) => d.id));
+}
+function openSearch(prefill) {
+  closeMenu();
+  const opts = scopeOptions();
+  if (!SV.open || !opts.some(([k]) => k === SV.scope)) SV.scope = opts.some(([k]) => k === prefs.sScope) ? prefs.sScope : opts[0][0];
+  SV.open = true;
+  sv.hidden = false;
+  document.body.classList.add('searching');
+  if (!reduced()) sv.animate([{ opacity: 0, transform: 'translateY(-8px)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: 'cubic-bezier(0.2, 0.9, 0.3, 1)' });
+  if (typeof prefill === 'string') qIn.value = prefill;
+  renderScope();
+  renderMode();
+  runSearch();
+  setTimeout(() => { qIn.focus(); qIn.select(); }, 30);
+  backfillTexts();
+}
+function closeSearch() {
+  if (!SV.open) return;
+  SV.open = false;
+  closeMenu();
+  document.body.classList.remove('searching');
+  const a = sv.animate([{ opacity: 1 }, { opacity: 0, transform: 'translateY(-6px)' }], { duration: reduced() ? 1 : 180, easing: 'ease-in' });
+  a.onfinish = () => { if (!SV.open) sv.hidden = true; };
+  qIn.blur();
+  if (!reader.hidden) $('#stage').focus({ preventScroll: true });
+}
+function renderScope() {
+  const opts = scopeOptions();
+  $('#svScope').innerHTML = opts.length > 1 ? `<div class="seg small" role="group">${opts.map(([k, l]) => `<button data-scope="${k}" aria-pressed="${SV.scope === k}">${esc(l)}</button>`).join('')}</div>` : '';
+}
+function renderMode() {
+  const flags = [prefs.matchCase ? 'Aa' : '', prefs.wholeWord ? 'Whole words' : '', prefs.sMode === 'near' ? `within ${prefs.near}` : ''].filter(Boolean);
+  const sub = [WHERE[prefs.where]?.short, ...flags].filter(Boolean).join(' · ');
+  $('#svMode').innerHTML = `<span><b>${MODES[prefs.sMode].label}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span>${ICON.down}`;
+  qIn.placeholder = { any: 'Any of these words', all: 'Search your documents', phrase: 'An exact phrase', near: 'Words close together', boolean: 'e.g. (stall OR spin) AND recovery NOT training' }[prefs.sMode];
+}
+const NEAR_STEPS = [2, 3, 5, 8, 12, 20, 40, 80];
+const PICK_HINT = { any: 'Any of the words', all: 'Every word, anywhere on the page', phrase: 'The words together, in order', near: 'All the words close together', boolean: 'AND, OR, NOT and ( )' };
+function pickerHtml() {
+  const opts = Object.keys(MODES).map((m) => `<button class="pk-opt${prefs.sMode === m ? ' on' : ''}" data-mode="${m}" role="option" aria-selected="${prefs.sMode === m}"><span class="pk-txt"><b>${MODES[m].label}</b><span>${PICK_HINT[m]}</span></span>${ICON.check}</button>`).join('');
+  const near = prefs.sMode === 'near' ? `<div class="pk-near"><span>Within</span><button class="pk-step" data-near="-1" aria-label="Closer">${ICON.minus}</button><b>${prefs.near}</b><button class="pk-step" data-near="1" aria-label="Further apart">${ICON.plus}</button><span>words</span></div>` : '';
+  return `<div class="pk-opts" role="listbox" aria-label="Search type">${opts}</div>${near}<div class="pk-togs"><button class="pk-tog" data-tog="case" aria-pressed="${prefs.matchCase}"><i>Aa</i>Match case</button><button class="pk-tog" data-tog="word" aria-pressed="${prefs.wholeWord}"><i><u>ab</u></i>Whole words</button></div><div class="pk-where"><span>Look in</span><div class="pk-wseg">${Object.entries(WHERE).map(([k, w]) => `<button type="button" data-where="${k}" aria-pressed="${(prefs.where || 'any') === k}">${w.label}</button>`).join('')}</div></div>`;
+}
+function openPicker(anchor) {
+  if (menuEl?.classList.contains('picker')) { closeMenu(); return; }
+  closeMenu();
+  const m = document.createElement('div');
+  m.className = 'menu picker glass-menu';
+  m.innerHTML = pickerHtml();
+  document.body.append(m);
+  const place = () => {
+    const r = anchor.getBoundingClientRect();
+    const mw = m.offsetWidth;
+    const left = Math.min(innerWidth - mw - 8, Math.max(8, r.right - mw));
+    m.style.left = `${left}px`; m.style.top = `${r.bottom + 6}px`;
+    m.style.setProperty('--ox', `${r.left + r.width / 2 - left}px top`);
+  };
+  place();
+  m.onclick = (e) => {
+    e.stopPropagation();
+    const o = e.target.closest('.pk-opt');
+    if (o) { prefs.sMode = o.dataset.mode; savePrefs(); renderMode(); runSearch(); if (o.dataset.mode === 'near') { m.innerHTML = pickerHtml(); return; } closeMenu(); qIn.focus(); return; }
+    const t = e.target.closest('[data-tog]');
+    if (t) { if (t.dataset.tog === 'case') prefs.matchCase = !prefs.matchCase; else prefs.wholeWord = !prefs.wholeWord; }
+    const wh = e.target.closest('[data-where]');
+    if (wh) prefs.where = wh.dataset.where;
+    const n = e.target.closest('[data-near]');
+    if (n) { const cur = Number(prefs.near) || 8; prefs.near = Number(n.dataset.near) > 0 ? (NEAR_STEPS.find((x) => x > cur) ?? cur) : ([...NEAR_STEPS].reverse().find((x) => x < cur) ?? cur); }
+    if (!t && !wh && !n) return;
+    savePrefs(); renderMode(); runSearch();
+    m.innerHTML = pickerHtml();
+  };
+  menuEl = m;
+  setTimeout(() => document.addEventListener('pointerdown', function off(e) { if (menuEl === m && !m.contains(e.target) && !anchor.contains(e.target)) closeMenu(); document.removeEventListener('pointerdown', off, true); }, true));
+}
+function runSearch() {
+  clearTimeout(SV.timer);
+  SV.timer = setTimeout(() => {
+    const q = qIn.value;
+    $('.sv-clear').hidden = !q;
+    const qid = ++SV.qid;
+    SV.pending = qid;
+    if (!q.trim()) { SV.last = null; renderSearch(); return; }
+    const ids = scopeIds();
+    searchWorker().postMessage({ t: 'q', qid, query: q, opts: { mode: prefs.sMode, matchCase: prefs.matchCase, wholeWord: prefs.wholeWord, near: prefs.near, where: prefs.where }, ids });
+    // a spinner only if it takes a moment
+    setTimeout(() => { if (SV.pending === qid) $('#svBody').classList.add('busy'); }, 160);
+  }, 130);
+}
+function onWorker(e) {
+  const d = e.data;
+  if (d.qid !== SV.qid) return;
+  SV.pending = 0;
+  $('#svBody').classList.remove('busy');
+  SV.last = { ...d, q: qIn.value };
+  SV.expanded.clear();
+  renderSearch();
+}
+const pageWord = (d) => (d.kind === 'slides' ? 'Slide' : d.kind === 'images' ? 'Photo' : 'p.');
+function hlText(s, hl) {
+  let out = '', at = 0;
+  for (const [a, b, c] of hl) { out += esc(s.slice(at, a)) + `<mark class="m c${c < 0 ? 0 : c}">${esc(s.slice(a, b))}</mark>`; at = b; }
+  return out + esc(s.slice(at));
+}
+function renderSearch() {
+  const body = $('#svBody');
+  const r = SV.last;
+  const ids = scopeIds();
+  const total = ids.reduce((a, id) => a + (docById(id)?.units || 0), 0);
+  const waiting = textJob.queue.length + (textJob.busy ? 1 : 0) + docs.filter((d) => d.pending).length;
+  if (!r || r.empty) {
+    const tips = {
+      any: [['stall spin', 'Pages with either word, or both'], ['"fuel pump"', 'Quotes keep words together'], ['hydraul*', 'A star matches any ending'], ['-checklist', 'A minus leaves out pages with that word']],
+      all: [['engine failure', 'Pages with both words, anywhere on the page'], ['VFR minimums class E', 'Each word you add narrows it down'], ['"fuel pump" magneto', 'Quotes keep words together'], ['hydraul*', 'A star matches any ending'], ['-checklist', 'A minus leaves out pages with that word']],
+      phrase: [['engine failure after takeoff', 'These exact words, in this order'], ['go-around', 'Any dash or curly quote style matches'], ['hydraul* system', 'A star still matches any ending']],
+      near: [['carburetor ice', `Both words within ${prefs.near} words of each other`], ['spin recovery rudder', 'Every word close together, in any order'], ['"angle of attack" stall', 'Quotes keep a phrase together']],
+      boolean: [['(stall OR spin) NOT training', 'AND, OR, NOT and parentheses, in capitals'], ['VOR OR NDB OR GPS', 'Any one of them'], ['(METAR OR TAF) AND (IFR OR LIFR)', 'Group as deep as you like']],
+    }[prefs.sMode];
+    body.innerHTML = `<div class="sv-idle"><h3>Search ${plural(ids.length, 'document')} · ${plural(total, 'page')}</h3>${waiting ? `<p class="muted"><span class="spin"></span> Indexing ${plural(waiting, 'document')} for search…</p>` : ''}
+      <div class="sv-tips">${tips.map(([c, t]) => `<button data-try="${esc(c)}"><code>${esc(c)}</code><span>${esc(t)}</span></button>`).join('')}<div><span class="keys"><kbd>Enter</kbd></span><span>Open the first result</span></div></div></div>`;
+    return;
+  }
+  if (r.error) { body.innerHTML = `<div class="sv-idle"><h3>Can’t search that yet</h3><p class="muted">${esc(r.error)}</p></div>`; return; }
+  if (!r.results.length) {
+    const fixes = [];
+    if (prefs.sMode === 'all' && /\s/.test(r.q.trim())) fixes.push('<button class="link" data-fix="any">Try Any word</button>');
+    if (prefs.sMode === 'near' || prefs.sMode === 'phrase') fixes.push('<button class="link" data-fix="all">Try All words</button>');
+    if (prefs.where !== 'any') fixes.push('<button class="link" data-fix="where">Look anywhere on the page</button>');
+    if (prefs.matchCase) fixes.push('<button class="link" data-fix="case">Turn off match case</button>');
+    if (prefs.wholeWord) fixes.push('<button class="link" data-fix="word">Turn off whole words</button>');
+    if (SV.scope !== 'all') fixes.push('<button class="link" data-fix="scope">Search everything</button>');
+    body.innerHTML = `<div class="sv-idle"><h3>No matches</h3><p class="muted">Nothing found in ${plural(r.searched, 'document')}${waiting ? ` (${waiting} still indexing)` : ''}.</p><div class="fixes">${fixes.join('')}</div></div>`;
+    return;
+  }
+  const head = `<div class="sv-sum">${r.hits.toLocaleString()} ${r.hits === 1 ? 'match' : 'matches'} on ${plural(r.pagesHit, 'page')} in ${plural(r.results.length, 'document')}${waiting ? ` <span class="muted">· ${waiting} still indexing</span>` : ''}</div>`;
+  body.innerHTML = head + r.results.slice(0, 120).map((g, gi) => {
+    const d = docById(g.id);
+    if (!d) return '';
+    const open = SV.expanded.has(g.id);
+    const shown = open ? g.pages : g.pages.slice(0, 4);
+    const where = (d.dir || []).map(folderLabel).join(' › ');
+    return `<section class="sr-doc" style="--i:${Math.min(gi, 12)}"><header><span class="card-badge ${d.kind}">${esc(labelOf(d))}</span><b>${esc(d.name)}</b><small>${esc([where, `${plural(g.pages.length, d.kind === 'slides' ? 'slide' : 'page')}`, `${g.count} ${g.count === 1 ? 'match' : 'matches'}`].filter(Boolean).join(' · '))}</small></header>
+      ${shown.map((p) => `<button class="sr-page" data-id="${g.id}" data-n="${p.n}"><span class="sr-pn">${pageWord(d)} ${p.n + 1}</span><span class="sr-txt">${p.h ? `<i>${esc(p.h)}</i>` : ''}${p.s != null ? hlText(p.s, p.hl) : '<span class="muted">Match on this page</span>'}</span><span class="sr-c">${p.c}</span></button>`).join('')}
+      ${g.pages.length > 4 && !open ? `<button class="sr-more" data-more="${g.id}">Show all ${g.pages.length} ${d.kind === 'slides' ? 'slides' : 'pages'}</button>` : ''}</section>`;
+  }).join('');
+}
+// open a result: inside the running session when the page is part of it, otherwise that document on its own
+async function openResult(id, n) {
+  const r = SV.last;
+  const hitsFor = new Map((r?.results || []).map((g) => [g.id, g.pages.map((p) => p.n)]));
+  const m = compile(r.q, { mode: prefs.sMode, matchCase: prefs.matchCase, wholeWord: prefs.wholeWord, near: prefs.near });
+  closeSearch();
+  let k = -1;
+  if (!reader.hidden) k = R.units.findIndex((u) => u.doc === id && u.i === n);
+  if (k < 0) {
+    const d = docById(id);
+    const units = Array.from({ length: d.units }, (_, i) => ({ doc: id, i, words: d.words[i] || 0, kind: d.kind }));
+    // swap the document in place; a running session is saved and waits on the library page
+    const inReader = !reader.hidden;
+    if (inReader && R.pacer && !R.pacer.s.finished) { R.pacer.tick(); await saveSession(); toast('Session saved · resume it from the library', { ms: 2600 }); }
+    await openReader(units, null, n, null, { quiet: inReader });
+    k = n;
+  } else go(k);
+  setHits(m, r.q, hitsFor);
+  if (R.viewer.k !== k) go(k);
+}
+// the hit bar in the reader: which match page you're on, and the next and previous ones
+function setHits(m, q, hitsFor) {
+  if (!m || m.error) return;
+  R.search = { m, q, ks: R.units.map((u, k) => (hitsFor.get(u.doc)?.includes(u.i) ? k : -1)).filter((k) => k >= 0) };
+  R.viewer.setHighlight(m);
+  paintHitbar(true);
+}
+function clearHits() { if (!R.search) return; R.search = null; R.viewer?.setHighlight(null); const hb = $('#hitbar'); hb.hidden = true; }
+function paintHitbar(fresh) {
+  const hb = $('#hitbar');
+  const s = R.search;
+  if (!s) { hb.hidden = true; return; }
+  const at = s.ks.indexOf(R.k);
+  const before = s.ks.filter((k) => k < R.k).length;
+  hb.hidden = false;
+  hb.innerHTML = `${ICON.search}<button class="hb-q" data-hb="edit" title="Change the search">${esc(s.q)}</button><b>${at >= 0 ? `${at + 1} of ${s.ks.length}` : `${before}/${s.ks.length}`}</b><button class="icon-btn" data-hb="prev" aria-label="Previous match page"${before ? '' : ' disabled'}>${ICON.up}</button><button class="icon-btn" data-hb="next" aria-label="Next match page"${s.ks.some((k) => k > R.k) ? '' : ' disabled'}>${ICON.down}</button><button class="icon-btn" data-hb="close" aria-label="Clear search">${ICON.close}</button>`;
+  if (fresh && !reduced()) hb.animate([{ opacity: 0, transform: 'translate(-50%, -10px) scale(0.96)' }, { opacity: 1, transform: 'translate(-50%, 0)' }], { duration: 320, easing: 'cubic-bezier(0.2, 0.9, 0.3, 1.1)' });
+}
+$('#hitbar').onclick = (e) => {
+  const b = e.target.closest('[data-hb]');
+  if (!b || !R.search) return;
+  const s = R.search;
+  if (b.dataset.hb === 'close') clearHits();
+  else if (b.dataset.hb === 'edit') openSearch(s.q);
+  else if (b.dataset.hb === 'next') { const k = s.ks.find((x) => x > R.k); if (k != null) go(k); }
+  else { const k = [...s.ks].reverse().find((x) => x < R.k); if (k != null) go(k); }
+};
+qIn.addEventListener('input', runSearch);
+qIn.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); if (qIn.value) { qIn.value = ''; runSearch(); } else closeSearch(); }
+  else if (e.key === 'Enter') { e.preventDefault(); const f = $('#svBody .sr-page'); if (f) openResult(f.dataset.id, Number(f.dataset.n)); }
+  else if (e.key === 'ArrowDown') { e.preventDefault(); $('#svBody .sr-page')?.focus(); }
+});
+sv.addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  const a = b.dataset;
+  if (a.sv === 'close') closeSearch();
+  else if (a.sv === 'clear') { qIn.value = ''; runSearch(); qIn.focus(); }
+  else if (a.sv === 'mode') openPicker(b);
+  else if (a.scope) { SV.scope = a.scope; prefs.sScope = a.scope; savePrefs(); renderScope(); runSearch(); }
+  else if (a.try) { qIn.value = a.try; runSearch(); qIn.focus(); }
+  else if (a.more) { SV.expanded.add(a.more); const y = $('#svBody').scrollTop; renderSearch(); $('#svBody').scrollTop = y; }
+  else if (a.fix) {
+    if (a.fix === 'any' || a.fix === 'all') prefs.sMode = a.fix;
+    else if (a.fix === 'where') prefs.where = 'any';
+    else if (a.fix === 'case') prefs.matchCase = false;
+    else if (a.fix === 'word') prefs.wholeWord = false;
+    else if (a.fix === 'scope') { SV.scope = 'all'; renderScope(); }
+    savePrefs(); renderMode(); runSearch();
+  } else if (a.id) openResult(a.id, Number(a.n));
+});
+$('#svBody').addEventListener('keydown', (e) => {
+  const cur = e.target.closest('.sr-page');
+  if (!cur) return;
+  const all = $$('#svBody .sr-page');
+  const i = all.indexOf(cur);
+  if (e.key === 'ArrowDown') { e.preventDefault(); all[i + 1]?.focus(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); (all[i - 1] || qIn).focus(); }
+});
 
 // ================= settings =================
 function openSettings() {
@@ -1633,14 +1976,17 @@ document.addEventListener('click', (e) => {
     paceSel: () => openSetup(readingOrder([...selected])),
     resume: resumeSession,
     endSaved: async () => { const ses = await store.get('session'); if (ses) { const p = Pacer.restore(ses); p.finish(); await learnSpeed(p); } await store.del('session'); renderHero(); toast('Session ended'); },
-    exit: () => exitReader(), prev: prevPage, next: nextPage, pause: togglePause, ring: togglePause,
+    search: () => openSearch(), exit: () => exitReader(), prev: prevPage, next: nextPage, pause: togglePause, ring: togglePause,
     flag: toggleFlag, overview: openOverview, stats: () => openStats(), more: () => moreMenu(b), paceThis,
   };
   acts[a]?.();
 });
 $('#sortSeg').onclick = (e) => { const b = e.target.closest('[data-sort]'); if (!b) return; prefs.sort = b.dataset.sort; savePrefs(); renderLibrary(); };
 document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'f' && !sheets.length) { e.preventDefault(); openSearch(); return; }
+  if (SV.open) { if (e.key === 'Escape' && !e.target.closest('#q')) { e.preventDefault(); if (menuEl) closeMenu(); else closeSearch(); } return; }
   if (e.target.closest('input, textarea, select, [contenteditable]')) return;
+  if (e.key === '/' && !sheets.length && !R.veil) { e.preventDefault(); openSearch(); return; }
   if (e.metaKey || e.ctrlKey || e.altKey) {
     if (!reader.hidden && (e.key === '=' || e.key === '+' || e.key === '-' || e.key === '0')) { e.preventDefault(); showZoom(R.viewer.setZoom(e.key === '0' ? 1 : R.viewer.zoom * (e.key === '-' ? 1 / 1.15 : 1.15))); }
     return;
@@ -1661,7 +2007,7 @@ document.addEventListener('keydown', (e) => {
   const acts = {
     arrowright: nextPage, arrowleft: prevPage, pagedown: () => R.viewer.scrollBy(1) || nextPage(), pageup: () => R.viewer.scrollBy(-1) || prevPage(),
     ' ': () => (e.shiftKey ? R.viewer.scrollBy(-1) || prevPage() : R.viewer.scrollBy(1) || nextPage()),
-    j: nextPage, k: prevPage, p: togglePause, f: toggleFlag, g: openOverview, s: () => openStats(), v: toggleView,
+    j: nextPage, k: prevPage, p: togglePause, e: editSession, f: toggleFlag, g: openOverview, s: () => openStats(), v: toggleView,
     b: () => { if (R.pacer) { R.pacer.takeBreakNow(); showBreak(); } },
     home: () => go(0), end: () => go(R.units.length - 1),
     '+': () => showZoom(R.viewer.setZoom(R.viewer.zoom * 1.15)), '=': () => showZoom(R.viewer.setZoom(R.viewer.zoom * 1.15)), '-': () => showZoom(R.viewer.setZoom(R.viewer.zoom / 1.15)),
@@ -1695,6 +2041,7 @@ applyFlowPrefs();
   await loadSpeed();
   await loadFolders();
   await loadLibrary();
+  setTimeout(backfillTexts, 2500);
   if (isDesktop) {
     document.body.classList.add('desktop');
     docs.filter((d) => d.pending).forEach((d) => queueIndex(d.id));

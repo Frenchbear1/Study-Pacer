@@ -2,7 +2,7 @@ import { readLocal } from './native.js';
 // Everything lives on this device in IndexedDB: the original files, what was worked out from them on import,
 // the reading position, and the session in progress (so a reload picks up exactly where you were).
 const DB = 'study-pacer';
-const VERSION = 1;
+const VERSION = 2; // 2: a text index (words, headings and captions per page) for search
 let dbp;
 
 function open() {
@@ -14,6 +14,7 @@ function open() {
       if (!db.objectStoreNames.contains('files')) db.createObjectStore('files');
       if (!db.objectStoreNames.contains('content')) db.createObjectStore('content');
       if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');
+      if (!db.objectStoreNames.contains('texts')) db.createObjectStore('texts');
     };
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
@@ -42,7 +43,8 @@ export const store = {
   async deleteDoc(id) {
     const db = await open();
     await new Promise((res, rej) => {
-      const t = db.transaction(['docs', 'files', 'content'], 'readwrite');
+      const t = db.transaction(['docs', 'files', 'content', 'texts'], 'readwrite');
+      t.objectStore('texts').delete(id);
       t.objectStore('docs').delete(id);
       t.objectStore('files').delete(id);
       t.objectStore('content').delete(id);
@@ -60,6 +62,10 @@ export const store = {
   putFile: (id, blob) => tx('files', 'readwrite', (s) => req(s.put(blob, id))),
   getContent: (id) => tx('content', 'readonly', (s) => req(s.get(id))),
   putContent: (id, c) => tx('content', 'readwrite', (s) => req(s.put(c, id))),
+  // per document: { v, pages: [text per page], marks: [[kind, start, end, …] or null per page] }
+  getText: (id) => tx('texts', 'readonly', (s) => req(s.get(id))),
+  putText: (id, t) => tx('texts', 'readwrite', (s) => req(s.put(t, id))),
+  textIds: () => tx('texts', 'readonly', (s) => req(s.getAllKeys())),
   get: (k) => tx('kv', 'readonly', (s) => req(s.get(k))),
   set: (k, v) => tx('kv', 'readwrite', (s) => req(s.put(v, k))),
   del: (k) => tx('kv', 'readwrite', (s) => req(s.delete(k))),

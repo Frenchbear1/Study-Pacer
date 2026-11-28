@@ -274,6 +274,7 @@ export async function parsePptx(buf, onProgress) {
     const shapes = [];
     const words = { n: 0 };
     let title = '';
+    const texts = [];
     // decorations from the master and layout (logos, bars), unless the slide hides them
     const showMaster = attr(sx.documentElement, 'showMasterSp') !== '0' && (!layout || attr(layout.x.documentElement, 'showMasterSp') !== '0');
     const walk = (spTree, rmap, src, offset) => {
@@ -284,7 +285,11 @@ export async function parsePptx(buf, onProgress) {
           const s = shapeFrom(el, rmap, ctx, { layout, master, mStyles, ph, mediaRef, offset });
           if (s) {
             shapes.push(s);
-            if (src === 'slide') { words.n += s.words || 0; if (ph && phKind(ph.type) === 'title' && !title) title = s.text || ''; }
+            if (src === 'slide') {
+              words.n += s.words || 0;
+              if (ph && phKind(ph.type) === 'title' && !title) title = s.text || '';
+              else if (s.text) texts.push(s.text);
+            }
           }
         } else if (el.localName === 'pic') {
           const s = picFrom(el, rmap, mediaRef, offset, { layout, master, ph });
@@ -303,7 +308,7 @@ export async function parsePptx(buf, onProgress) {
           walk(el, rmap, src, off);
         } else if (el.localName === 'graphicFrame') {
           const s = tableFrom(el, ctx, offset, mStyles);
-          if (s) { shapes.push(s); if (src === 'slide') words.n += s.words || 0; }
+          if (s) { shapes.push(s); if (src === 'slide') { words.n += s.words || 0; texts.push(s.rows.map((r) => r.cells.map((c) => c.paras.map((p) => p.map((x) => x.t).join('')).join(' ')).join(' · ')).join('\n')); } }
         }
       }
     };
@@ -321,7 +326,7 @@ export async function parsePptx(buf, onProgress) {
         if (ph && ph.type === 'body') notes = [...deep(sp, 'p')].map((p) => [...deep(p, 't')].map((t) => t.textContent).join('')).filter(Boolean).join('\n');
       }
     }
-    slides.push({ bg, shapes, words: words.n, title: title.trim(), notes });
+    slides.push({ bg, shapes, words: words.n, title: title.trim(), notes, text: texts });
     onProgress?.((i + 1) / order.length);
   }
   // pull out the pictures that were used

@@ -323,3 +323,20 @@ export function human(sec) {
   return m ? `${h} h ${m} min` : `${h} h`;
 }
 export const timeOfDay = (ms) => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+// Changing a session while it runs: a new plan, with everything already done kept — the time read so far,
+// which pages are finished and how long each took, breaks and focus blocks taken, and where you are.
+export function carryOver(old, p, now = Date.now()) {
+  const o = old.s, s = p.s;
+  const key = (u) => `${u.doc}:${u.i}`;
+  const was = new Map(old.units.map((u, j) => [key(u), j]));
+  p.units.forEach((u, j) => { const k = was.get(key(u)); if (k != null) { s.done[j] = o.done[k]; s.spent[j] = o.spent[k]; } });
+  for (const f of ['started', 'last', 'work', 'breakTotal', 'paused', 'brk', 'workSinceBreak', 'pagesSinceBreak', 'breaks', 'cycles', 'log', 'lastBreakAt', 'snooze', 'defer']) if (o[f] !== undefined) s[f] = o[f];
+  s.due = null; s.added = 0; s.overNotified = false; s.finished = null;
+  s.alloc = s.alloc.map(() => null);
+  let cur = p.units.findIndex((u) => key(u) === key(old.units[o.cur]));
+  if (cur < 0) cur = Math.max(0, s.done.indexOf(false));
+  p.arrive(cur, now);
+  p.log('edit');
+  return p;
+}

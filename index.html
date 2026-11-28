@@ -35,6 +35,7 @@
     <header class="topbar glass-top">
       <div class="brand"><span class="logo" aria-hidden="true"><svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="12.5" class="lg-track"/><circle cx="16" cy="16" r="12.5" class="lg-arc"/><path d="M16 9.5v7l4.5 2.6" class="lg-hand"/></svg></span><b>Study Pacer</b></div>
       <div class="tb-actions">
+        <button class="icon-btn" data-act="search" aria-label="Search" title="Search (Ctrl F)"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg></button>
         <button class="icon-btn" data-act="themes" aria-label="Reading theme" title="Reading theme (T)"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.8 1.8-1.7 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-1 .8-1.7 1.8-1.7H17a4 4 0 0 0 4-4C21 6.6 17 3 12 3Z"/><circle cx="7.5" cy="11" r="1.2"/><circle cx="10" cy="7.3" r="1.2"/><circle cx="14.5" cy="7.3" r="1.2"/></svg></button>
         <button class="icon-btn" data-act="settings" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button>
         <button class="icon-btn desk-only" data-act="refresh" aria-label="Check folders for changes" title="Check folders for changes"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.4-5.7L20 8.5"/><path d="M20 3.5v5h-5"/></svg></button>
@@ -78,6 +79,7 @@
       <button class="icon-btn" data-act="exit" aria-label="Back to library" title="Library (Esc)"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
       <div class="rd-title"><b id="rdName"></b><span id="rdSub" class="muted"></span></div>
       <div class="tb-actions">
+        <button class="icon-btn" data-act="search" aria-label="Search" title="Search (Ctrl F)"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg></button>
         <button class="icon-btn" data-act="flag" id="flagBtn" aria-label="Flag this page" title="Flag page (F)"><svg viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8L3.5 9.7l5.9-.9Z"/></svg></button>
         <button class="icon-btn" data-act="overview" aria-label="All pages" title="All pages (G)"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/></svg></button>
         <button class="icon-btn" data-act="themes" aria-label="Reading theme" title="Reading theme (T)"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.8 1.8-1.7 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-1 .8-1.7 1.8-1.7H17a4 4 0 0 0 4-4C21 6.6 17 3 12 3Z"/><circle cx="7.5" cy="11" r="1.2"/><circle cx="10" cy="7.3" r="1.2"/><circle cx="14.5" cy="7.3" r="1.2"/></svg></button>
@@ -90,6 +92,18 @@
     <div class="edge-tap r" data-act="next" aria-hidden="true"></div>
     <div class="hud glass-bottom" id="hud"></div>
     <div class="zoom-pill glass-menu" id="zoomPill" hidden></div>
+    <div class="hitbar glass-menu" id="hitbar" hidden></div>
+  </section>
+
+  <!-- ===== Search ===== -->
+  <section id="search" class="search-view" aria-label="Search" hidden>
+    <div class="sv-bar glass-top">
+      <label class="sv-field"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg><input id="q" type="search" placeholder="Search your documents" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"><button class="sv-clear" data-sv="clear" aria-label="Clear" hidden><svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7 7 17"/></svg></button></label>
+      <button class="sv-mode" id="svMode" data-sv="mode" aria-haspopup="listbox"></button>
+      <button class="btn sv-done" data-sv="close">Done</button>
+    </div>
+    <div class="sv-scope" id="svScope"></div>
+    <div class="sv-body" id="svBody"></div>
   </section>
 
   <div id="layer"></div>

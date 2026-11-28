@@ -134,6 +134,7 @@ export class Viewer {
       else if (d.kind === 'images') this.drawImage(el, d, u.i, k);
       else this.drawFlow(el, d, u.i, meta);
       el._drawn = true; el._drawnW = el._w;
+      await this.applyHl(el, k);
     } catch (e) {
       if (e?.name !== 'RenderingCancelledException') console.warn(e);
     }
@@ -200,6 +201,7 @@ export class Viewer {
     if (k < 0 || k >= this.units.length) return;
     const first = this.k === -1;
     this.k = k;
+    if (this.hl) this.hlScroll = k;
     if (this.mode === 'scroll') { this.scrollTo(k, !first); return; }
     this.stage.className = 'stage paged';
     const old = this.stage.querySelector('.pane:not(.leaving)');
@@ -219,7 +221,8 @@ export class Viewer {
     this.stage.append(pane);
     pane.scrollTop = 0;
     this.fitClass(pane, el, k);
-    this.draw(el, k).then(() => this.fitClass(pane, el, k));
+    const had = el._drawn && el._drawnW === el._w;
+    this.draw(el, k).then(() => { this.fitClass(pane, el, k); if (had && (this.hl || el.querySelector('mark.m, .hl-layer'))) this.applyHl(el, k); });
     // the page turn
     const style = reduced() || first ? 'none' : this.prefs.turn || 'slide';
     if (old) {
@@ -402,6 +405,84 @@ export class Viewer {
       clearTimeout(this._zt);
       this._zt = setTimeout(() => { this.onZoom?.(this.setZoom(this._zw)); this._zw = 0; }, 90);
     }, { passive: false });
+  }
+
+  // ---- search matches on the page ----
+  setHighlight(m) {
+    this.hl = m;
+    this.hlScroll = m ? this.k : -1;
+    const els = [...(this.els || []), ...this.lru.values()];
+    for (const el of els) if (el._drawn) this.applyHl(el, Number(el.dataset.k));
+  }
+  async applyHl(el, k) {
+    // take off what was there
+    for (const mk of el.querySelectorAll('mark.m')) mk.replaceWith(...mk.childNodes);
+    el.querySelector('.hl-layer')?.remove();
+    el.normalize();
+    const m = this.hl;
+    if (!m) return;
+    const u = this.units[k], meta = this.docs.get(u.doc);
+    if (meta.kind === 'pdf') {
+      const d = await loadDoc(meta);
+      const sz = await pdfSize(d, u.i + 1);
+      d.tc ||= new Map();
+      if (!d.tc.has(u.i)) d.tc.set(u.i, (await sz.page.getTextContent()).items);
+      if (this.hl !== m) return;
+      const vp = sz.page.getViewport({ scale: el._w / sz.w });
+      const lib = window.pdfjsLib;
+      const layer = document.createElement('div');
+      layer.className = 'hl-layer';
+      let html = '';
+      for (const it of d.tc.get(u.i)) {
+        if (!it.str) continue;
+        const rs = m.soft(it.str);
+        if (!rs.length) continue;
+        const tx = lib.Util.transform(vp.transform, it.transform);
+        const fh = Math.hypot(tx[2], tx[3]);
+        const w = it.width * vp.scale;
+        // where a match sits along the run of text, measured with real letter widths (a "W" is wider than an "i")
+        const ctx = (this._mctx ||= document.createElement('canvas').getContext('2d'));
+        const serif = /serif|times|roman|georgia|garamond/i.test(it.fontName || '') && !/sans/i.test(it.fontName || '');
+        ctx.font = `100px ${serif ? 'Times New Roman, serif' : 'Helvetica, Arial, sans-serif'}`;
+        const full = ctx.measureText(it.str).width || 1;
+        const at = (i) => (w * ctx.measureText(it.str.slice(0, i)).width) / full;
+        for (const [a, b, c] of rs) { const x0 = at(a), x1 = at(b); html += `<i class="hl-box c${c < 0 ? 0 : c}" style="left:${tx[4] + x0}px;top:${tx[5] - fh * 0.92}px;width:${Math.max(3, x1 - x0)}px;height:${fh * 1.18}px"></i>`; }
+      }
+      layer.innerHTML = html;
+      el.querySelector('.hl-layer')?.remove();
+      el.append(layer);
+    } else if (meta.kind === 'flow' || meta.kind === 'slides') {
+      const root = el.querySelector('.fc, .slide-host');
+      if (!root) return;
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      const nodes = [];
+      while (walker.nextNode()) nodes.push(walker.currentNode);
+      for (const t of nodes) {
+        const rs = m.soft(t.data);
+        if (!rs.length) continue;
+        const frag = document.createDocumentFragment();
+        let at = 0;
+        for (const [a, b, c] of rs) {
+          if (a > at) frag.append(t.data.slice(at, a));
+          const mk = document.createElement('mark');
+          mk.className = `m c${c < 0 ? 0 : c}`;
+          mk.textContent = t.data.slice(a, b);
+          frag.append(mk);
+          at = b;
+        }
+        if (at < t.data.length) frag.append(t.data.slice(at));
+        t.replaceWith(frag);
+      }
+    }
+    // the first match comes into view on the page you jumped to
+    if (this.hlScroll === k) {
+      const first = el.querySelector('mark.m, .hl-box');
+      const pane = el.closest('.pane');
+      if (first && pane && pane.scrollHeight > pane.clientHeight) {
+        const top = first.getBoundingClientRect().top - pane.getBoundingClientRect().top + pane.scrollTop - pane.clientHeight * 0.35;
+        pane.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+      }
+    }
   }
 
   // ---- small pictures of pages for the overview ----

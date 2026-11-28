@@ -1,7 +1,7 @@
 // Offline: the app's files come from the cache and are refreshed in the background.
-const CACHE = 'study-pacer-v4';
+const CACHE = 'study-pacer-v5';
 const SHELL = [
-  './', 'index.html', 'css/app.css', 'js/app.js', 'js/pacer.js', 'js/viewer.js', 'js/importers.js', 'js/pptx.js', 'js/store.js', 'js/themes.js',
+  './', 'index.html', 'css/app.css', 'js/app.js', 'js/pacer.js', 'js/viewer.js', 'js/importers.js', 'js/pptx.js', 'js/store.js', 'js/themes.js', 'js/native.js', 'js/search.js', 'js/search-worker.js',
   'vendor/pdf.min.js', 'vendor/pdf.worker.min.js', 'vendor/jszip.min.js', 'vendor/mammoth.browser.min.js',
   'vendor/paper/fine.webp', 'vendor/paper/book.webp', 'vendor/paper/laid.webp', 'vendor/paper/rice.webp', 'vendor/paper/handmade.webp', 'vendor/paper/recycled.webp', 'vendor/paper/natural.webp', 'vendor/paper/linen.webp', 'vendor/paper/felt.webp', 'vendor/paper/card.webp',
   'manifest.webmanifest', 'favicon.ico', 'icons/icon-192x192.png',

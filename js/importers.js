@@ -83,7 +83,9 @@ async function importOne(file, kind, onProgress) {
   const ext = extOf(file.name);
   const base = { id: uid(), name: baseName(file.name), file: file.name, ext, kind, size: file.size, added: Date.now(), pos: 0, read: [] };
   const buf = await file.arrayBuffer();
-  const doc = { ...base, ...(await analyze(buf, kind, ext, base.id, onProgress)) };
+  const { _text, ...fields } = await analyze(buf, kind, ext, base.id, onProgress);
+  const doc = { ...base, ...fields };
+  if (_text) await store.putText(base.id, _text);
   await store.putFile(base.id, new Blob([buf], { type: file.type || 'application/octet-stream' }));
   await store.putDoc(doc);
   return doc;
@@ -92,19 +94,19 @@ async function importOne(file, kind, onProgress) {
 // What's worked out from a file: its units, words per unit, headings, shape and preview. Slides and reflowed
 // documents also keep their parsed content (so they open instantly); the file itself is never needed for those.
 async function analyze(buf, kind, ext, id, onProgress) {
-  if (kind === 'pdf') return fromPdf(buf, onProgress);
+  if (kind === 'pdf') { const r = await fromPdf(buf, onProgress); r._text = { v: TEXT_V, ...r._text }; return r; }
   if (kind === 'slides') {
     await jszip();
     const deck = await parsePptx(buf, onProgress);
     if (!deck.slides.length) throw new Error('no slides found');
     await store.putContent(id, deck);
-    return { units: deck.slides.length, unit: 'slide', words: deck.slides.map((s) => s.words), heads: deck.slides.map((s) => s.title), aspect: deck.w / deck.h };
+    return { units: deck.slides.length, unit: 'slide', words: deck.slides.map((s) => s.words), heads: deck.slides.map((s) => s.title), aspect: deck.w / deck.h, _text: pack(deck.slides.map(slideText)) };
   }
   const html = await flowHtml(buf, ext);
   const chunks = paginate(html.html);
   if (!chunks.length) throw new Error('nothing to read in it');
   await store.putContent(id, { chunks: chunks.map((c) => c.html) });
-  const out = { units: chunks.length, unit: 'page', words: chunks.map((c) => c.words), heads: chunks.map((c) => c.head) };
+  const out = { units: chunks.length, unit: 'page', words: chunks.map((c) => c.words), heads: chunks.map((c) => c.head), _text: pack(chunks.map((c) => htmlText(c.html))) };
   if (html.title && html.title.length < 120) out.title = html.title;
   return out;
 }
@@ -120,7 +122,8 @@ export async function indexLocal(doc, onProgress) {
     return { ...doc, ...fields, pending: false, error: null };
   }
   const buf = await (await readLocal(doc.path)).arrayBuffer();
-  const fields = await analyze(buf, doc.kind, doc.ext, doc.id, onProgress);
+  const { _text, ...fields } = await analyze(buf, doc.kind, doc.ext, doc.id, onProgress);
+  if (_text) await store.putText(doc.id, _text);
   const next = { ...doc, ...fields, pending: false, error: null };
   // files in your folders keep their file names (that's how you organised them)
   // pages read that no longer exist (the file got shorter) are dropped
@@ -179,6 +182,8 @@ async function fromPdf(buf, onProgress) {
   const n = pdf.numPages;
   const words = new Array(n).fill(0);
   const heads = new Array(n).fill('');
+  const texts = new Array(n).fill('');
+  const marks = new Array(n).fill(null);
   let aspect = 0.77;
   let thumb = null;
   for (let i = 1; i <= n; i++) {
@@ -195,15 +200,11 @@ async function fromPdf(buf, onProgress) {
     }
     try {
       const tc = await page.getTextContent();
-      let text = '';
-      let big = { size: 0, s: '' };
-      for (const it of tc.items) {
-        text += it.str + ' ';
-        const h = Math.abs(it.transform?.[3] || 0);
-        if (it.str.trim().length > 2 && h > big.size + 0.5) big = { size: h, s: it.str.trim() };
-      }
-      words[i - 1] = countWords(text);
-      heads[i - 1] = big.s.slice(0, 90);
+      const t = pdfPageText(tc.items);
+      words[i - 1] = countWords(t.text);
+      heads[i - 1] = t.head.slice(0, 90);
+      texts[i - 1] = t.text;
+      marks[i - 1] = t.marks;
     } catch {}
     page.cleanup();
     if (i % 4 === 0 || i === n) { onProgress?.(i / n); await new Promise((r) => setTimeout(r)); }
@@ -230,8 +231,95 @@ async function fromPdf(buf, onProgress) {
   const info = await pdf.getMetadata().catch(() => null);
   pdf.destroy();
   const title = info?.info?.Title?.trim();
-  return { units: n, unit: 'page', words, heads, aspect, thumb, ...(title && title.length > 3 && title.length < 120 && !/^(untitled|microsoft|slide)/i.test(title) ? { title } : {}) };
+  return { units: n, unit: 'page', words, heads, aspect, thumb, _text: { pages: texts, marks }, ...(title && title.length > 3 && title.length < 120 && !/^(untitled|microsoft|slide)/i.test(title) ? { title } : {}) };
 }
+
+// One PDF page's text in reading order, with where its headings (bigger than the page's usual text) and
+// captions ("Figure 3-1 …", "Table 2 …") are: marks are [kind, start, end, …], kind 1 a heading, 2 a caption.
+export function pdfPageText(items) {
+  let text = '';
+  const runs = [];
+  const sizes = [];
+  for (const it of items) {
+    if (it.str == null) continue;
+    const size = Math.abs(it.transform?.[3] || it.height || 0);
+    const start = text.length;
+    text += it.str;
+    if (it.str.trim()) { runs.push([start, text.length, size]); for (let k = 0; k < it.str.length; k++) sizes.push(size); }
+    text += it.hasEOL ? '\n' : (it.str && !/\s$/.test(it.str) ? ' ' : '');
+  }
+  sizes.sort((a, b) => a - b);
+  const body = sizes[Math.floor(sizes.length / 2)] || 0;
+  const marks = [];
+  let head = '';
+  let biggest = 0;
+  for (const [a, b, size] of runs) {
+    if (body && size >= body * 1.22 && b - a >= 3) {
+      const last = marks.length - 3;
+      if (last >= 0 && marks[last] === 1 && a - marks[last + 2] <= 2) marks[last + 2] = b; else marks.push(1, a, b);
+      if (size > biggest + 0.5) { biggest = size; head = text.slice(a, b).trim(); }
+    }
+  }
+  // captions: a line that starts "Figure 3-1", "Fig. 2", "Table 4" …
+  const cap = /(^|\n)\s*((?:Figure|Fig\.|Table|Exhibit)\s*[\dA-Z][\w.-]*)[^\n]*/g;
+  let m;
+  while ((m = cap.exec(text))) { const a = m.index + m[1].length; marks.push(2, a, m.index + m[0].length); }
+  if (!head) head = (text.split('\n').find((l) => l.trim().length > 3) || '').trim();
+  return { text, marks: marks.length ? marks : null, head };
+}
+// Reflowed pages and slides: text from their HTML, headings and captions marked
+export function htmlText(html) {
+  const host = document.createElement('div');
+  host.innerHTML = html;
+  let text = '';
+  const marks = [];
+  const BLOCK = /^(P|DIV|H[1-6]|LI|TR|BLOCKQUOTE|PRE|FIGURE|FIGCAPTION|CAPTION|SECTION|ARTICLE|TABLE|UL|OL|DL|DT|DD|HR|BR)$/;
+  const walk = (n) => {
+    if (n.nodeType === 3) { text += n.textContent.replace(/\s+/g, ' '); return; }
+    if (n.nodeType !== 1) return;
+    const tag = n.tagName;
+    if (tag === 'SCRIPT' || tag === 'STYLE') return;
+    const kind = /^H[1-6]$/.test(tag) ? 1 : tag === 'FIGCAPTION' || tag === 'CAPTION' ? 2 : 0;
+    if (BLOCK.test(tag) && text && !text.endsWith('\n')) text += '\n';
+    const a = text.length;
+    for (const c of n.childNodes) walk(c);
+    if (kind && text.length > a) marks.push(kind, a, text.length);
+    if (BLOCK.test(tag) && !text.endsWith('\n')) text += '\n';
+  };
+  for (const c of host.childNodes) walk(c);
+  return { text: text.replace(/[ \t]+\n/g, '\n'), marks: marks.length ? marks : null };
+}
+export function slideText(s) {
+  const title = s.title || '';
+  const rest = (s.text || s.shapes?.filter((x) => x.text && x.text !== title).map((x) => x.text) || []).join('\n');
+  const text = [title, rest, s.notes ? `\n${s.notes}` : ''].filter(Boolean).join('\n');
+  return { text, marks: title ? [1, 0, title.length] : null };
+}
+const TEXT_V = 1;
+const pack = (list) => ({ v: TEXT_V, pages: list.map((x) => x.text), marks: list.map((x) => x.marks) });
+// The text index for a document that doesn't have one yet (imported before search existed)
+export async function buildText(doc) {
+  if (doc.kind === 'images') return { v: TEXT_V, pages: new Array(doc.units).fill(''), marks: new Array(doc.units).fill(null) };
+  if (doc.kind === 'pdf') {
+    const lib = await pdfjs();
+    const blob = await store.getFile(doc.id);
+    if (!blob) throw new Error('missing file');
+    const pdf = await lib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()), isEvalSupported: false }).promise;
+    const out = [];
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      out.push(pdfPageText((await page.getTextContent()).items));
+      page.cleanup();
+      if (i % 8 === 0) await new Promise((r) => setTimeout(r));
+    }
+    pdf.destroy();
+    return pack(out);
+  }
+  const c = await store.getContent(doc.id);
+  if (doc.kind === 'slides') return pack(c.slides.map(slideText));
+  return pack(c.chunks.map(htmlText));
+}
+export const textVersion = TEXT_V;
 
 // ---------- reflowed documents ----------
 async function flowHtml(buf, ext) {
